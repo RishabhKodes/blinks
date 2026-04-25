@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* Theme tokens - light mode defaults */
+:root {
+  --bg-page: #f5f5f5;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f3f4f6;
+  --bg-input: #ffffff;
+  --bg-accent: #171717;
+  --bg-accent-hover: #000000;
+  --bg-overlay: rgba(0, 0, 0, 0.3);
+  --border-color: #d4d4d4;
+  --border-subtle: #e5e5e5;
+  --fg: #171717;
+  --fg-secondary: #404040;
+  --fg-muted: #737373;
+  --fg-faint: #a3a3a3;
+  --fg-on-accent: #fafafa;
+  --graph-bg: #f5f5f5;
+  --graph-node-fill: rgba(0, 0, 0, 0.04);
+  --graph-node-fill-hover: rgba(0, 0, 0, 0.08);
+  --graph-node-stroke: rgba(0, 0, 0, 0.5);
+  --graph-node-stroke-hover: rgba(0, 0, 0, 0.85);
+  --graph-node-glow: rgba(0, 0, 0, 0.04);
+  --graph-label: rgba(0, 0, 0, 0.8);
+  --graph-label-hover: rgba(0, 0, 0, 1);
+  --graph-link: rgba(0, 0, 0, 0.2);
+}
+
+.dark {
+  --bg-page: #0a0a0a;
+  --bg-surface: #171717;
+  --bg-surface-hover: #262626;
+  --bg-input: #0a0a0a;
+  --bg-accent: #f5f5f5;
+  --bg-accent-hover: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --border-color: #404040;
+  --border-subtle: #262626;
+  --fg: #f5f5f5;
+  --fg-secondary: #d4d4d4;
+  --fg-muted: #a3a3a3;
+  --fg-faint: #737373;
+  --fg-on-accent: #171717;
+  --graph-bg: #0a0a0a;
+  --graph-node-fill: rgba(255, 255, 255, 0.04);
+  --graph-node-fill-hover: rgba(255, 255, 255, 0.1);
+  --graph-node-stroke: rgba(255, 255, 255, 0.6);
+  --graph-node-stroke-hover: rgba(255, 255, 255, 0.95);
+  --graph-node-glow: rgba(255, 255, 255, 0.06);
+  --graph-label: rgba(255, 255, 255, 0.85);
+  --graph-label-hover: rgba(255, 255, 255, 1);
+  --graph-link: rgba(140, 140, 140, 0.4);
+}
+
+@theme inline {
+  --color-page: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-surface-hover: var(--bg-surface-hover);
+  --color-input: var(--bg-input);
+  --color-accent: var(--bg-accent);
+  --color-accent-hover: var(--bg-accent-hover);
+  --color-overlay: var(--bg-overlay);
+  --color-edge: var(--border-color);
+  --color-edge-subtle: var(--border-subtle);
+  --color-ink: var(--fg);
+  --color-ink-secondary: var(--fg-secondary);
+  --color-ink-muted: var(--fg-muted);
+  --color-ink-faint: var(--fg-faint);
+  --color-ink-on-accent: var(--fg-on-accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--fg);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Animations for UI components */
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
