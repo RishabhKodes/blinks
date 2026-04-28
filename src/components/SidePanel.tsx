@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useApp } from "./AppProvider";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -13,7 +13,49 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function SidePanel() {
-  const { selectedTopic, clearSelection } = useApp();
+  const { selectedTopic, clearSelection, addToast } = useApp();
+  const [compiling, setCompiling] = useState(false);
+  const [compiledAt, setCompiledAt] = useState<string | null>(null);
+
+  const loadCompileStatus = useCallback(async (topicId: string) => {
+    try {
+      const res = await fetch(`/api/compile?topicId=${encodeURIComponent(topicId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCompiledAt(data?.compiledAt || null);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (selectedTopic) {
+      setCompiledAt(null);
+      loadCompileStatus(selectedTopic.id);
+    }
+  }, [selectedTopic, loadCompileStatus]);
+
+  async function handleCompile() {
+    if (!selectedTopic || compiling) return;
+    setCompiling(true);
+    try {
+      const res = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId: selectedTopic.id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCompiledAt(data.result?.compiledAt || new Date().toISOString());
+        addToast(`Compiled "${selectedTopic.name}"`, "success");
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Compilation failed", "error");
+      }
+    } catch {
+      addToast("Compilation failed", "error");
+    }
+    setCompiling(false);
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -44,9 +86,23 @@ export function SidePanel() {
             <h2 className="text-xl font-semibold text-ink leading-tight">
               {selectedTopic.name}
             </h2>
-            <p className="text-sm text-ink-faint mt-1">
-              {selectedTopic.resources.length} resource{selectedTopic.resources.length !== 1 ? "s" : ""}
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-sm text-ink-faint">
+                {selectedTopic.resources.length} resource{selectedTopic.resources.length !== 1 ? "s" : ""}
+              </span>
+              <button
+                onClick={handleCompile}
+                disabled={compiling}
+                className="text-xs px-2 py-0.5 rounded border border-edge-subtle hover:border-edge bg-surface hover:bg-surface-hover text-ink-muted hover:text-ink-secondary transition-all disabled:opacity-50"
+              >
+                {compiling ? "Compiling..." : "Compile"}
+              </button>
+              {compiledAt && !compiling && (
+                <span className="text-xs text-ink-faint">
+                  compiled {new Date(compiledAt).toLocaleDateString()}
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={clearSelection}
@@ -56,6 +112,15 @@ export function SidePanel() {
             x
           </button>
         </div>
+
+        {/* Compiled article */}
+        {selectedTopic.description && (
+          <div className="px-6 py-4 border-b border-edge">
+            <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap">
+              {selectedTopic.description}
+            </p>
+          </div>
+        )}
 
         {/* Resources */}
         <div className="px-6 py-4">

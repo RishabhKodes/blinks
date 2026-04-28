@@ -52,3 +52,23 @@ export const graphPositions = sqliteTable("graph_positions", {
   x: integer("x").notNull().default(0),
   y: integer("y").notNull().default(0),
 });
+
+export const wikiCompilations = sqliteTable("wiki_compilations", {
+  topicId: text("topic_id")
+    .primaryKey()
+    .references(() => topics.id, { onDelete: "cascade" }),
+  compiledAt: text("compiled_at").notNull(),
+  status: text("status").notNull().default("pending"), // pending | compiled | error
+});
+
+export const lintResults = sqliteTable("lint_results", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(), // inconsistency | missing_connection | suggested_topic | data_quality
+  severity: text("severity").notNull().default("info"), // info | warning | error
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  topicId: text("topic_id"),
+  suggestion: text("suggestion").notNull().default(""),
+  resolved: integer("resolved").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});

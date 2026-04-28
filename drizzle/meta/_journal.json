@@ -15,6 +15,13 @@
       "when": 1776809941675,
       "tag": "0001_empty_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777196429011,
+      "tag": "0002_rainy_sentinel",
+      "breakpoints": true
     }
   ]
 }

@@ -6,13 +6,16 @@ import { Graph } from "@/components/Graph";
 import { SidePanel } from "@/components/SidePanel";
 import { AddResourceModal } from "@/components/AddResourceModal";
 import { SearchPalette } from "@/components/SearchPalette";
+import { ChatPanel } from "@/components/ChatPanel";
+import { LintPanel } from "@/components/LintPanel";
 import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
 
 function AppContent() {
-  const { graphData, theme, toggleTheme } = useApp();
+  const { graphData, theme, toggleTheme, chatOpen, setChatOpen } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [lintOpen, setLintOpen] = useState(false);
 
   const closeModal = useCallback(() => setModalOpen(false), []);
 
@@ -27,6 +30,10 @@ function AppContent() {
         e.preventDefault();
         setSearchOpen((prev) => !prev);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+        e.preventDefault();
+        setChatOpen(!chatOpen);
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -38,8 +45,10 @@ function AppContent() {
     <main className="flex-1 relative overflow-hidden">
       <Graph />
       <SidePanel />
+      <ChatPanel />
       <AddResourceModal open={modalOpen} onClose={closeModal} />
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <LintPanel open={lintOpen} onClose={() => setLintOpen(false)} />
       <ToastContainer />
 
       {/* Top toolbar */}
@@ -60,6 +69,15 @@ function AppContent() {
           {/* Right: actions */}
           <div className="flex items-center gap-2 pointer-events-auto">
             <button
+              onClick={() => setChatOpen(!chatOpen)}
+              className="h-9 px-3 rounded-lg bg-surface/70 hover:bg-surface-hover border border-edge-subtle hover:border-edge transition-all text-ink-muted hover:text-ink-secondary text-sm flex items-center gap-2 backdrop-blur-md"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <kbd className="text-xs text-ink-faint">{"\u2318"}J</kbd>
+            </button>
+            <button
               onClick={() => setSearchOpen(true)}
               className="h-9 px-3 rounded-lg bg-surface/70 hover:bg-surface-hover border border-edge-subtle hover:border-edge transition-all text-ink-muted hover:text-ink-secondary text-sm flex items-center gap-2 backdrop-blur-md"
             >
@@ -74,6 +92,15 @@ function AppContent() {
             >
               <span className="text-base leading-none">+</span>
               Add
+            </button>
+            <button
+              onClick={() => setLintOpen(true)}
+              className="h-9 w-9 rounded-lg bg-surface/70 hover:bg-surface-hover border border-edge-subtle hover:border-edge transition-all text-ink-muted hover:text-ink-secondary flex items-center justify-center backdrop-blur-md"
+              aria-label="Health check"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
             </button>
             {/* Theme toggle */}
             <button

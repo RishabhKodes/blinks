@@ -76,6 +76,8 @@ interface AppContextValue {
   refreshGraph: () => Promise<void>;
   theme: Theme;
   toggleTheme: () => void;
+  chatOpen: boolean;
+  setChatOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -96,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedTopic, setSelectedTopic] = useState<SelectedTopic | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [theme, setTheme] = useState<Theme>("dark");
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("blinks-theme") as Theme | null;
@@ -172,6 +175,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refreshGraph,
         theme,
         toggleTheme,
+        chatOpen,
+        setChatOpen,
       }}
     >
       {children}
