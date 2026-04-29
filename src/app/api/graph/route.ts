@@ -1,71 +1,68 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
-import { writeGraphJson, writeIndexFile, ensureVaultStructure } from "@/lib/vault";
-import type { GraphData } from "@/lib/vault";
 
-// GET /api/graph -- topics as nodes, topic_links as edges
+// GET /api/graph -- resources as nodes, shared-topic edges
 export async function GET() {
   const db = getDb();
 
-  const allTopics = db.select().from(schema.topics).all();
-  const allTopicLinks = db.select().from(schema.topicLinks).all();
-  const allPositions = db.select().from(schema.graphPositions).all();
+  const allResources = db.select().from(schema.resources).all();
   const allResourceTopics = db.select().from(schema.resourceTopics).all();
+  const allTopics = db.select().from(schema.topics).all();
+  const allPositions = db.select().from(schema.graphPositions).all();
 
-  const posMap = new Map(allPositions.map((p) => [p.topicId, { x: p.x, y: p.y }]));
+  const posMap = new Map(allPositions.map((p) => [p.nodeId, { x: p.x, y: p.y }]));
+  const topicNameMap = new Map(allTopics.map((t) => [t.id, t.name]));
 
-  // Count resources per topic
-  const resourceCountMap = new Map<string, number>();
+  // Build topics-per-resource map
+  const topicsByResource = new Map<string, string[]>();
   for (const rt of allResourceTopics) {
-    resourceCountMap.set(rt.topicId, (resourceCountMap.get(rt.topicId) || 0) + 1);
+    const arr = topicsByResource.get(rt.resourceId) || [];
+    const name = topicNameMap.get(rt.topicId);
+    if (name) arr.push(name);
+    topicsByResource.set(rt.resourceId, arr);
   }
 
-  // Deduplicate links
+  // Build edges: resources that share a topic are connected
+  const resourcesByTopic = new Map<string, string[]>();
+  for (const rt of allResourceTopics) {
+    const arr = resourcesByTopic.get(rt.topicId) || [];
+    arr.push(rt.resourceId);
+    resourcesByTopic.set(rt.topicId, arr);
+  }
+
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
-  for (const link of allTopicLinks) {
-    const key = [link.sourceTopicId, link.targetTopicId].sort().join("->");
-    if (!linkSet.has(key)) {
-      linkSet.add(key);
-      links.push({ source: link.sourceTopicId, target: link.targetTopicId });
+  for (const resourceIds of resourcesByTopic.values()) {
+    for (let i = 0; i < resourceIds.length; i++) {
+      for (let j = i + 1; j < resourceIds.length; j++) {
+        const key = [resourceIds[i], resourceIds[j]].sort().join("->");
+        if (!linkSet.has(key)) {
+          linkSet.add(key);
+          links.push({ source: resourceIds[i]!, target: resourceIds[j]! });
+        }
+      }
     }
   }
 
-  const graphData: GraphData = {
-    nodes: allTopics.map((t) => ({
-      id: t.id,
-      name: t.name,
-      resourceCount: resourceCountMap.get(t.id) || 0,
-      ...(posMap.get(t.id) || {}),
-    })),
-    links,
-  };
+  const nodes = allResources.map((r) => ({
+    id: r.id,
+    name: r.title,
+    url: r.url,
+    type: r.type,
+    source: r.source,
+    thumbnail: r.thumbnail,
+    summary: r.summary,
+    savedAt: r.savedAt,
+    author: r.author,
+    topics: topicsByResource.get(r.id) || [],
+    ...(posMap.get(r.id) || {}),
+  }));
 
-  // Write graph files to vault
-  ensureVaultStructure();
-  writeGraphJson(graphData);
-  writeIndexFile({
-    total_topics: allTopics.length,
-    total_resources: allResourceTopics.length,
-    last_updated: new Date().toISOString(),
-    topicTree: allTopics.map((t) => ({
-      name: t.name,
-      resourceCount: resourceCountMap.get(t.id) || 0,
-      backlinks: allTopicLinks
-        .filter((l) => l.sourceTopicId === t.id)
-        .map((l) => {
-          const target = allTopics.find((tt) => tt.id === l.targetTopicId);
-          return target ? `[[${target.name}]]` : "";
-        })
-        .filter(Boolean),
-    })),
-  });
-
-  return NextResponse.json(graphData);
+  return NextResponse.json({ nodes, links });
 }
 
-// POST /api/graph -- save node positions (nodeId = topic ID)
+// POST /api/graph -- save node positions
 export async function POST(request: Request) {
   const body = await request.json();
   const { positions } = body;
@@ -76,24 +73,24 @@ export async function POST(request: Request) {
 
   const db = getDb();
   for (const pos of positions) {
-    const nodeId = pos.topicId || pos.nodeId;
+    const nodeId = pos.nodeId;
     if (!nodeId) continue;
 
     const existing = db
       .select()
       .from(schema.graphPositions)
-      .where(eq(schema.graphPositions.topicId, nodeId))
+      .where(eq(schema.graphPositions.nodeId, nodeId))
       .get();
 
     if (existing) {
       db.update(schema.graphPositions)
         .set({ x: Math.round(pos.x), y: Math.round(pos.y) })
-        .where(eq(schema.graphPositions.topicId, nodeId))
+        .where(eq(schema.graphPositions.nodeId, nodeId))
         .run();
     } else {
       db.insert(schema.graphPositions)
         .values({
-          topicId: nodeId,
+          nodeId,
           x: Math.round(pos.x),
           y: Math.round(pos.y),
         })

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect } from "react";
 import { useApp } from "./AppProvider";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -13,93 +13,48 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function SidePanel() {
-  const { selectedTopic, clearSelection, addToast } = useApp();
-  const [compiling, setCompiling] = useState(false);
-  const [compiledAt, setCompiledAt] = useState<string | null>(null);
+  const { selectedResource, clearSelection } = useApp();
 
-  const loadCompileStatus = useCallback(async (topicId: string) => {
-    try {
-      const res = await fetch(`/api/compile?topicId=${encodeURIComponent(topicId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCompiledAt(data?.compiledAt || null);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  useEffect(() => {
-    if (selectedTopic) {
-      setCompiledAt(null);
-      loadCompileStatus(selectedTopic.id);
-    }
-  }, [selectedTopic, loadCompileStatus]);
-
-  async function handleCompile() {
-    if (!selectedTopic || compiling) return;
-    setCompiling(true);
-    try {
-      const res = await fetch("/api/compile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topicId: selectedTopic.id }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCompiledAt(data.result?.compiledAt || new Date().toISOString());
-        addToast(`Compiled "${selectedTopic.name}"`, "success");
-      } else {
-        const err = await res.json();
-        addToast(err.error || "Compilation failed", "error");
-      }
-    } catch {
-      addToast("Compilation failed", "error");
-    }
-    setCompiling(false);
-  }
-
-  // Close on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && selectedTopic) {
+      if (e.key === "Escape" && selectedResource) {
         clearSelection();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedTopic, clearSelection]);
+  }, [selectedResource, clearSelection]);
 
-  if (!selectedTopic) return null;
+  if (!selectedResource) return null;
+
+  const typeClass = TYPE_COLORS[selectedResource.type] || TYPE_COLORS.other;
+  const domain = (() => {
+    try {
+      return new URL(selectedResource.url).hostname.replace(/^www\./, "");
+    } catch {
+      return selectedResource.source;
+    }
+  })();
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-30"
-        onClick={clearSelection}
-      />
+      <div className="fixed inset-0 z-30" onClick={clearSelection} />
 
-      {/* Panel */}
       <div className="fixed top-0 right-0 h-full w-full max-w-md z-40 bg-page/95 backdrop-blur-md border-l border-edge shadow-2xl animate-slide-in-right overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-page/90 backdrop-blur-sm border-b border-edge px-6 py-5 flex items-start justify-between">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-semibold text-ink leading-tight">
-              {selectedTopic.name}
+              {selectedResource.name}
             </h2>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-sm text-ink-faint">
-                {selectedTopic.resources.length} resource{selectedTopic.resources.length !== 1 ? "s" : ""}
+            <div className="flex items-center gap-2 mt-2">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${typeClass}`}>
+                {selectedResource.type}
               </span>
-              <button
-                onClick={handleCompile}
-                disabled={compiling}
-                className="text-xs px-2 py-0.5 rounded border border-edge-subtle hover:border-edge bg-surface hover:bg-surface-hover text-ink-muted hover:text-ink-secondary transition-all disabled:opacity-50"
-              >
-                {compiling ? "Compiling..." : "Compile"}
-              </button>
-              {compiledAt && !compiling && (
+              <span className="text-xs text-ink-faint">{domain}</span>
+              {selectedResource.author && (
                 <span className="text-xs text-ink-faint">
-                  compiled {new Date(compiledAt).toLocaleDateString()}
+                  by {selectedResource.author}
                 </span>
               )}
             </div>
@@ -113,69 +68,58 @@ export function SidePanel() {
           </button>
         </div>
 
-        {/* Compiled article */}
-        {selectedTopic.description && (
+        {/* Link */}
+        <div className="px-6 py-3 border-b border-edge">
+          <a
+            href={selectedResource.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-500 dark:text-blue-400 hover:underline break-all flex items-center gap-2"
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            {selectedResource.url}
+          </a>
+        </div>
+
+        {/* Summary */}
+        {selectedResource.summary && (
           <div className="px-6 py-4 border-b border-edge">
-            <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap">
-              {selectedTopic.description}
+            <h3 className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-2">Summary</h3>
+            <p className="text-sm text-ink-secondary leading-relaxed">
+              {selectedResource.summary}
             </p>
           </div>
         )}
 
-        {/* Resources */}
-        <div className="px-6 py-4">
-          {selectedTopic.resources.length === 0 && (
-            <p className="text-base text-ink-faint py-8 text-center">
-              No resources in this topic yet.
-            </p>
-          )}
-
-          <div className="space-y-3">
-            {selectedTopic.resources.map((resource) => {
-              const typeClass = TYPE_COLORS[resource.type] || TYPE_COLORS.other;
-
-              return (
-                <a
-                  key={resource.id}
-                  href={resource.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-4 rounded-lg border border-edge hover:border-ink-faint/40 bg-surface hover:bg-surface-hover transition-all group"
+        {/* Topics */}
+        {selectedResource.topics.length > 0 && (
+          <div className="px-6 py-4 border-b border-edge">
+            <h3 className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-2">Topics</h3>
+            <div className="flex flex-wrap gap-2">
+              {selectedResource.topics.map((topic) => (
+                <span
+                  key={topic}
+                  className="text-xs px-2.5 py-1 rounded-full bg-surface border border-edge text-ink-secondary"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-base font-medium text-ink group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors leading-snug">
-                        {resource.title}
-                      </p>
-                      {resource.summary && (
-                        <p className="text-sm text-ink-muted mt-1.5 line-clamp-2 leading-relaxed">
-                          {resource.summary}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${typeClass}`}>
-                          {resource.type}
-                        </span>
-                        {resource.author && (
-                          <span className="text-xs text-ink-faint">
-                            {resource.author}
-                          </span>
-                        )}
-                        {resource.source && (
-                          <span className="text-xs text-ink-faint">
-                            {resource.source}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <svg className="w-4 h-4 text-ink-faint group-hover:text-ink-muted shrink-0 mt-1 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </div>
-                </a>
-              );
-            })}
+                  {topic}
+                </span>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* Metadata */}
+        <div className="px-6 py-4">
+          <h3 className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-2">Saved</h3>
+          <p className="text-sm text-ink-faint">
+            {new Date(selectedResource.savedAt).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
         </div>
       </div>
     </>

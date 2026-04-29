@@ -12,7 +12,14 @@ import {
 export interface GraphNode {
   id: string;
   name: string;
-  resourceCount: number;
+  url: string;
+  type: string;
+  source: string;
+  thumbnail: string;
+  summary: string;
+  savedAt: string;
+  author: string;
+  topics: string[];
   x?: number;
   y?: number;
 }
@@ -27,32 +34,17 @@ export interface GraphData {
   links: GraphLink[];
 }
 
-export interface Resource {
+export interface SelectedResource {
   id: string;
+  name: string;
   url: string;
-  title: string;
   type: string;
-  author: string;
   source: string;
+  author: string;
   thumbnail: string;
   summary: string;
   savedAt: string;
   topics: string[];
-}
-
-export interface Topic {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SelectedTopic {
-  id: string;
-  name: string;
-  description: string;
-  resources: Resource[];
 }
 
 export type ToastType = "success" | "error";
@@ -67,8 +59,8 @@ export type Theme = "light" | "dark";
 
 interface AppContextValue {
   graphData: GraphData;
-  selectedTopic: SelectedTopic | null;
-  selectTopic: (topicId: string) => Promise<void>;
+  selectedResource: SelectedResource | null;
+  selectResource: (resourceId: string) => void;
   clearSelection: () => void;
   toasts: Toast[];
   addToast: (message: string, type: ToastType) => void;
@@ -95,7 +87,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     nodes: [],
     links: [],
   });
-  const [selectedTopic, setSelectedTopic] = useState<SelectedTopic | null>(null);
+  const [selectedResource, setSelectedResource] = useState<SelectedResource | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [theme, setTheme] = useState<Theme>("dark");
   const [chatOpen, setChatOpen] = useState(false);
@@ -128,25 +120,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const selectTopic = useCallback(async (topicId: string) => {
-    try {
-      const res = await fetch(`/api/topics/${encodeURIComponent(topicId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedTopic({
-          id: data.id,
-          name: data.name,
-          description: data.description || "",
-          resources: data.resources || [],
-        });
-      }
-    } catch {
-      // silently fail
+  const selectResource = useCallback((resourceId: string) => {
+    const node = graphData.nodes.find((n) => n.id === resourceId);
+    if (node) {
+      setSelectedResource({
+        id: node.id,
+        name: node.name,
+        url: node.url,
+        type: node.type,
+        source: node.source,
+        author: node.author,
+        thumbnail: node.thumbnail,
+        summary: node.summary,
+        savedAt: node.savedAt,
+        topics: node.topics,
+      });
     }
-  }, []);
+  }, [graphData]);
 
   const clearSelection = useCallback(() => {
-    setSelectedTopic(null);
+    setSelectedResource(null);
   }, []);
 
   const addToast = useCallback((message: string, type: ToastType) => {
@@ -166,8 +159,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         graphData,
-        selectedTopic,
-        selectTopic,
+        selectedResource,
+        selectResource,
         clearSelection,
         toasts,
         addToast,

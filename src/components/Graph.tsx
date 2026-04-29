@@ -29,7 +29,7 @@ function getThemeColors() {
 }
 
 export function Graph() {
-  const { graphData, selectTopic, clearSelection, theme } = useApp();
+  const { graphData, selectResource, clearSelection, theme } = useApp();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -90,12 +90,11 @@ export function Graph() {
     }
   }, [forceData.nodes.length]);
 
-  // Click: open topic side panel
   const handleNodeClick = useCallback(
     (node: GraphNodeObj) => {
-      selectTopic(node.id);
+      selectResource(node.id);
     },
-    [selectTopic]
+    [selectResource]
   );
 
   const handleNodeDragEnd = useCallback(async (node: GraphNodeObj) => {
@@ -105,7 +104,7 @@ export function Graph() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          positions: [{ topicId: node.id, x: node.x, y: node.y }],
+          positions: [{ nodeId: node.id, x: node.x, y: node.y }],
         }),
       });
     } catch {

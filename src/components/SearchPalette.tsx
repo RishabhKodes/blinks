@@ -1,16 +1,26 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useApp, type Resource } from "./AppProvider";
+import { useApp } from "./AppProvider";
+
+interface SearchResource {
+  id: string;
+  title: string;
+  url: string;
+  type: string;
+  source: string;
+  summary: string;
+  topics: string[];
+}
 
 interface SearchResults {
   topics: { id: string; name: string; description: string }[];
-  resources: Resource[];
+  resources: SearchResource[];
 }
 
 type SearchItem =
   | { type: "topic"; data: { id: string; name: string; description: string } }
-  | { type: "resource"; data: Resource };
+  | { type: "resource"; data: SearchResource };
 
 export function SearchPalette({
   open,
@@ -19,7 +29,7 @@ export function SearchPalette({
   open: boolean;
   onClose: () => void;
 }) {
-  const { selectTopic } = useApp();
+  const { selectResource } = useApp();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResults>({
     topics: [],
@@ -92,18 +102,13 @@ export function SearchPalette({
 
   const handleSelectItem = useCallback(
     (item: SearchItem) => {
-      if (item.type === "topic") {
-        selectTopic(item.data.id);
-      } else {
-        // Find the first topic this resource belongs to and open it
-        const topics = (item.data as Resource).topics;
-        if (topics && topics.length > 0) {
-          selectTopic(topics[0]);
-        }
+      if (item.type === "resource") {
+        selectResource(item.data.id);
       }
+      // Topic results don't navigate anywhere in resource-centric graph
       onClose();
     },
-    [selectTopic, onClose]
+    [selectResource, onClose]
   );
 
   // Keyboard navigation

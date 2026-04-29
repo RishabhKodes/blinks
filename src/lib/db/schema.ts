@@ -48,7 +48,7 @@ export const resourceLinks = sqliteTable("resource_links", {
 });
 
 export const graphPositions = sqliteTable("graph_positions", {
-  topicId: text("topic_id").primaryKey(),
+  nodeId: text("topic_id").primaryKey(), // column still named topic_id in SQL, stores resource IDs
   x: integer("x").notNull().default(0),
   y: integer("y").notNull().default(0),
 });
