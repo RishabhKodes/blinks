@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "AI-organized knowledge graph for saved resources",
     start_url: "/",
     display: "standalone",
-    background_color: "#0a0a0a",
-    theme_color: "#0a0a0a",
+    background_color: "#1a1b1e",
+    theme_color: "#1a1b1e",
     icons: [
       {
         src: "/icon-192x192.png",

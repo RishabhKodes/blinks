@@ -68,14 +68,14 @@ export function Graph() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [colors, setColors] = useState(() => ({
-    bg: "#0a0a0a",
-    nodeFill: "#171717",
-    nodeFillHover: "#262626",
-    nodeStroke: "#404040",
-    nodeStrokeHover: "#737373",
-    label: "#f5f5f5",
-    labelMuted: "#d4d4d4",
-    link: "rgba(140, 140, 140, 0.4)",
+    bg: "#1a1b1e",
+    nodeFill: "#242529",
+    nodeFillHover: "#2e3035",
+    nodeStroke: "#363840",
+    nodeStrokeHover: "#8b8f98",
+    label: "#e4e4e8",
+    labelMuted: "#b0b3ba",
+    link: "rgba(160, 165, 175, 0.3)",
   }));
 
   useEffect(() => {

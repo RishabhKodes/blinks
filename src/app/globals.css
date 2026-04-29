@@ -28,29 +28,29 @@
 }
 
 .dark {
-  --bg-page: #0a0a0a;
-  --bg-surface: #171717;
-  --bg-surface-hover: #262626;
-  --bg-input: #0a0a0a;
-  --bg-accent: #f5f5f5;
+  --bg-page: #1a1b1e;
+  --bg-surface: #242529;
+  --bg-surface-hover: #2e3035;
+  --bg-input: #1a1b1e;
+  --bg-accent: #e4e4e8;
   --bg-accent-hover: #ffffff;
-  --bg-overlay: rgba(0, 0, 0, 0.6);
-  --border-color: #404040;
-  --border-subtle: #262626;
-  --fg: #f5f5f5;
-  --fg-secondary: #d4d4d4;
-  --fg-muted: #a3a3a3;
-  --fg-faint: #737373;
-  --fg-on-accent: #171717;
-  --graph-bg: #0a0a0a;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  --border-color: #363840;
+  --border-subtle: #2a2c31;
+  --fg: #e4e4e8;
+  --fg-secondary: #b0b3ba;
+  --fg-muted: #8b8f98;
+  --fg-faint: #5f636d;
+  --fg-on-accent: #1a1b1e;
+  --graph-bg: #1a1b1e;
   --graph-node-fill: rgba(255, 255, 255, 0.04);
-  --graph-node-fill-hover: rgba(255, 255, 255, 0.1);
-  --graph-node-stroke: rgba(255, 255, 255, 0.6);
-  --graph-node-stroke-hover: rgba(255, 255, 255, 0.95);
+  --graph-node-fill-hover: rgba(255, 255, 255, 0.08);
+  --graph-node-stroke: rgba(255, 255, 255, 0.5);
+  --graph-node-stroke-hover: rgba(255, 255, 255, 0.85);
   --graph-node-glow: rgba(255, 255, 255, 0.06);
   --graph-label: rgba(255, 255, 255, 0.85);
   --graph-label-hover: rgba(255, 255, 255, 1);
-  --graph-link: rgba(140, 140, 140, 0.4);
+  --graph-link: rgba(160, 165, 175, 0.3);
 }
 
 @theme inline {
