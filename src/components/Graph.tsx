@@ -11,43 +11,74 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GraphNodeObj = any;
 
-const NODE_RADIUS = 28;
+const TYPE_ACCENT: Record<string, string> = {
+  article: "#3b82f6",
+  tweet: "#0ea5e9",
+  video: "#ef4444",
+  repo: "#22c55e",
+  podcast: "#a855f7",
+  other: "#737373",
+};
+
+const NODE_H = 36;
+const NODE_PAD_X = 14;
+const NODE_CORNER = 10;
+const ACCENT_W = 4;
 
 function getThemeColors() {
   const root = getComputedStyle(document.documentElement);
   return {
     bg: root.getPropertyValue("--graph-bg").trim(),
-    nodeFill: root.getPropertyValue("--graph-node-fill").trim(),
-    nodeFillHover: root.getPropertyValue("--graph-node-fill-hover").trim(),
-    nodeStroke: root.getPropertyValue("--graph-node-stroke").trim(),
-    nodeStrokeHover: root.getPropertyValue("--graph-node-stroke-hover").trim(),
-    nodeGlow: root.getPropertyValue("--graph-node-glow").trim(),
-    label: root.getPropertyValue("--graph-label").trim(),
-    labelHover: root.getPropertyValue("--graph-label-hover").trim(),
+    nodeFill: root.getPropertyValue("--bg-surface").trim(),
+    nodeFillHover: root.getPropertyValue("--bg-surface-hover").trim(),
+    nodeStroke: root.getPropertyValue("--border-color").trim(),
+    nodeStrokeHover: root.getPropertyValue("--fg-muted").trim(),
+    label: root.getPropertyValue("--fg").trim(),
+    labelMuted: root.getPropertyValue("--fg-secondary").trim(),
     link: root.getPropertyValue("--graph-link").trim(),
   };
 }
 
+function truncateLabel(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + "\u2026";
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
 export function Graph() {
-  const { graphData, selectResource, clearSelection, theme } = useApp();
+  const { graphData, selectResource, clearSelection, selectedResource, theme } = useApp();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [colors, setColors] = useState(() => ({
     bg: "#0a0a0a",
-    nodeFill: "rgba(255, 255, 255, 0.04)",
-    nodeFillHover: "rgba(255, 255, 255, 0.1)",
-    nodeStroke: "rgba(255, 255, 255, 0.6)",
-    nodeStrokeHover: "rgba(255, 255, 255, 0.95)",
-    nodeGlow: "rgba(255, 255, 255, 0.06)",
-    label: "rgba(255, 255, 255, 0.85)",
-    labelHover: "rgba(255, 255, 255, 1)",
+    nodeFill: "#171717",
+    nodeFillHover: "#262626",
+    nodeStroke: "#404040",
+    nodeStrokeHover: "#737373",
+    label: "#f5f5f5",
+    labelMuted: "#d4d4d4",
     link: "rgba(140, 140, 140, 0.4)",
   }));
 
   useEffect(() => {
-    // Small delay to let CSS variables apply after theme toggle
     const t = setTimeout(() => setColors(getThemeColors()), 50);
     return () => clearTimeout(t);
   }, [theme]);
@@ -66,6 +97,8 @@ export function Graph() {
       nodes: graphData.nodes.map((n) => ({
         id: n.id,
         name: n.name,
+        type: n.type,
+        source: n.source,
         x: n.x,
         y: n.y,
       })),
@@ -78,13 +111,12 @@ export function Graph() {
 
   useEffect(() => {
     if (forceData.nodes.length > 0 && fgRef.current) {
-      // Tighten force layout so nodes cluster closer
-      fgRef.current.d3Force?.("charge")?.strength(-120)?.distanceMax(300);
-      fgRef.current.d3Force?.("link")?.distance(80);
+      fgRef.current.d3Force?.("charge")?.strength(-200)?.distanceMax(400);
+      fgRef.current.d3Force?.("link")?.distance(120);
       fgRef.current.d3Force?.("center")?.strength(0.05);
 
       const timer = setTimeout(() => {
-        fgRef.current?.zoomToFit?.(400, 60);
+        fgRef.current?.zoomToFit?.(400, 80);
       }, 600);
       return () => clearTimeout(timer);
     }
@@ -112,54 +144,91 @@ export function Graph() {
     }
   }, []);
 
-  // Truncate long titles for the bubble label
-  function truncateLabel(text: string, max: number): string {
-    if (text.length <= max) return text;
-    return text.slice(0, max - 1) + "\u2026";
-  }
-
   const paintNode = useCallback(
     (node: GraphNodeObj, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
+      const cx = node.x ?? 0;
+      const cy = node.y ?? 0;
       const isHovered = hoveredNodeId === node.id;
-      const r = NODE_RADIUS / globalScale;
+      const isSelected = selectedResource?.id === node.id;
+      const active = isHovered || isSelected;
 
-      // Glow on hover
-      if (isHovered) {
-        ctx.beginPath();
-        ctx.arc(x, y, r + 4 / globalScale, 0, 2 * Math.PI);
-        ctx.fillStyle = colors.nodeGlow;
+      const fontSize = Math.max(13 / globalScale, 2);
+      ctx.font = `600 ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+      const label = truncateLabel(node.name, 32);
+      const textW = ctx.measureText(label).width;
+
+      const padX = NODE_PAD_X / globalScale;
+      const accentW = ACCENT_W / globalScale;
+      const h = NODE_H / globalScale;
+      const w = textW + padX * 2 + accentW;
+      const r = NODE_CORNER / globalScale;
+
+      const x = cx - w / 2;
+      const y = cy - h / 2;
+
+      // Shadow
+      if (active) {
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.25)";
+        ctx.shadowBlur = 12 / globalScale;
+        ctx.shadowOffsetY = 2 / globalScale;
+        roundRect(ctx, x, y, w, h, r);
+        ctx.fillStyle = active ? colors.nodeFillHover : colors.nodeFill;
         ctx.fill();
+        ctx.restore();
       }
 
-      // Circle
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fillStyle = isHovered ? colors.nodeFillHover : colors.nodeFill;
+      // Card body
+      roundRect(ctx, x, y, w, h, r);
+      ctx.fillStyle = active ? colors.nodeFillHover : colors.nodeFill;
       ctx.fill();
-      ctx.strokeStyle = isHovered ? colors.nodeStrokeHover : colors.nodeStroke;
-      ctx.lineWidth = (isHovered ? 2.5 : 1.8) / globalScale;
+      ctx.strokeStyle = active ? colors.nodeStrokeHover : colors.nodeStroke;
+      ctx.lineWidth = (active ? 1.8 : 1.2) / globalScale;
       ctx.stroke();
 
-      // Label below circle
-      const fontSize = Math.max(14 / globalScale, 2);
-      ctx.font = `500 ${fontSize}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = isHovered ? colors.labelHover : colors.label;
-      ctx.fillText(truncateLabel(node.name, 24), x, y + r + 4 / globalScale);
+      // Type accent bar (left edge)
+      const accent = TYPE_ACCENT[node.type] || TYPE_ACCENT.other;
+      const barR = r;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x + barR, y);
+      ctx.lineTo(x + accentW, y);
+      ctx.lineTo(x + accentW, y + h);
+      ctx.lineTo(x + barR, y + h);
+      ctx.arcTo(x, y + h, x, y + h - barR, barR);
+      ctx.lineTo(x, y + barR);
+      ctx.arcTo(x, y, x + barR, y, barR);
+      ctx.closePath();
+      ctx.fillStyle = accent;
+      ctx.fill();
+      ctx.restore();
+
+      // Label
+      ctx.fillStyle = active ? colors.label : colors.labelMuted;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x + accentW + padX * 0.6, cy + 0.5 / globalScale);
     },
-    [hoveredNodeId, colors]
+    [hoveredNodeId, selectedResource, colors]
   );
 
   const paintNodeArea = useCallback(
     (node: GraphNodeObj, color: string, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
-      const r = NODE_RADIUS / globalScale;
-      ctx.beginPath();
-      ctx.arc(x, y, r + 2 / globalScale, 0, 2 * Math.PI);
+      const cx = node.x ?? 0;
+      const cy = node.y ?? 0;
+
+      const fontSize = Math.max(13 / globalScale, 2);
+      ctx.font = `600 ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+      const label = truncateLabel(node.name, 32);
+      const textW = ctx.measureText(label).width;
+
+      const padX = NODE_PAD_X / globalScale;
+      const accentW = ACCENT_W / globalScale;
+      const h = NODE_H / globalScale;
+      const w = textW + padX * 2 + accentW;
+      const r = NODE_CORNER / globalScale;
+
+      roundRect(ctx, cx - w / 2, cy - h / 2, w, h, r);
       ctx.fillStyle = color;
       ctx.fill();
     },
@@ -180,7 +249,6 @@ export function Graph() {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen">
         <div className="text-center max-w-md -mt-24">
-          {/* Decorative circles */}
           <div className="relative mx-auto w-40 h-40 mb-8">
             <div className="absolute inset-0 rounded-full border-2 border-ink-faint/40" />
             <div className="absolute inset-5 rounded-full border-2 border-ink-muted/30" />
@@ -217,7 +285,7 @@ export function Graph() {
       nodeCanvasObjectMode={() => "replace"}
       nodePointerAreaPaint={paintNodeArea}
       linkColor={linkColor}
-      linkWidth={1.5}
+      linkWidth={1.2}
       onNodeClick={handleNodeClick}
       onNodeHover={handleNodeHover}
       onNodeDragEnd={handleNodeDragEnd}
