@@ -1,5 +1,5 @@
 import ogs from "open-graph-scraper";
-import { extract } from "@extractus/article-extractor";
+import { Defuddle } from "defuddle/node";
 
 export interface FetchedContent {
   url: string;
@@ -124,10 +124,11 @@ export async function fetchContent(url: string): Promise<FetchedContent> {
     // Fall through to generic fetcher if tweet API fails
   }
 
-  // Fetch OG metadata and article text in parallel
-  const [ogResult, articleResult] = await Promise.allSettled([
+  // Fetch HTML, OG metadata, and run Defuddle in parallel
+  const [htmlResult, ogResult] = await Promise.allSettled([
+    fetch(url, { redirect: "follow", headers: { "User-Agent": "blinks/1.0" } })
+      .then(async (r) => (r.ok ? { text: await r.text(), finalUrl: r.url } : null)),
     ogs({ url }),
-    extract(url),
   ]);
 
   let ogTitle = "";
@@ -145,22 +146,27 @@ export async function fetchContent(url: string): Promise<FetchedContent> {
     }
   }
 
-  let articleTitle = "";
-  let articleAuthor = "";
-  let articleText = "";
+  let defuddleTitle = "";
+  let defuddleAuthor = "";
+  let defuddleContent = "";
 
-  if (articleResult.status === "fulfilled" && articleResult.value) {
-    const article = articleResult.value;
-    articleTitle = article.title || "";
-    articleAuthor = article.author || "";
-    articleText = stripHtml(article.content || "");
+  if (htmlResult.status === "fulfilled" && htmlResult.value) {
+    const { text: html, finalUrl } = htmlResult.value;
+    try {
+      const result = await Defuddle(html, finalUrl, { markdown: true });
+      defuddleTitle = result.title || "";
+      defuddleAuthor = result.author || "";
+      defuddleContent = result.content || "";
+    } catch {
+      // Defuddle failed, fall back to OG description
+    }
   }
 
-  const title = articleTitle || ogTitle || url;
+  const title = defuddleTitle || ogTitle || url;
   const description = ogDescription || "";
-  const author = articleAuthor || "";
+  const author = defuddleAuthor || "";
   const thumbnail = ogImage || "";
-  const textContent = articleText || ogDescription || "";
+  const textContent = defuddleContent || ogDescription || "";
   const finalSource = ogSiteName || source;
 
   return {
@@ -173,21 +179,6 @@ export async function fetchContent(url: string): Promise<FetchedContent> {
     thumbnail,
     textContent: truncateText(textContent, 4000),
   };
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function truncateText(text: string, maxLength: number): string {

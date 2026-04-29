@@ -9,10 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@extractus/article-extractor": "^8.0.20",
     "better-sqlite3": "^12.9.0",
+    "defuddle": "^0.18.1",
     "drizzle-orm": "^0.45.2",
     "gray-matter": "^4.0.3",
+    "linkedom": "^0.18.12",
     "next": "16.2.4",
     "open-graph-scraper": "^6.11.0",
     "react": "19.2.4",
