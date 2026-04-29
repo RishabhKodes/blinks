@@ -28,25 +28,66 @@ export async function GET() {
     topicsByResource.set(rt.resourceId, arr);
   }
 
-  // Build edges: resources that share a topic are connected
-  const resourcesByTopic = new Map<string, string[]>();
+  // Build edges weighted by number of shared topics
+  // Only show edges where resources share 2+ topics (strong connections)
+  // For isolated nodes, add their single best connection so nothing floats alone
+  const resourceIds = new Set(allResources.map((r) => r.id));
+  const topicSetsById = new Map<string, Set<string>>();
   for (const rt of allResourceTopics) {
-    const arr = resourcesByTopic.get(rt.topicId) || [];
-    arr.push(rt.resourceId);
-    resourcesByTopic.set(rt.topicId, arr);
+    if (!resourceIds.has(rt.resourceId)) continue;
+    const s = topicSetsById.get(rt.resourceId) || new Set<string>();
+    s.add(rt.topicId);
+    topicSetsById.set(rt.resourceId, s);
+  }
+
+  // Count shared topics between each pair
+  const pairWeight = new Map<string, number>();
+  const idList = [...topicSetsById.keys()];
+  for (let i = 0; i < idList.length; i++) {
+    const aTopics = topicSetsById.get(idList[i]!)!;
+    for (let j = i + 1; j < idList.length; j++) {
+      const bTopics = topicSetsById.get(idList[j]!)!;
+      let shared = 0;
+      for (const t of aTopics) {
+        if (bTopics.has(t)) shared++;
+      }
+      if (shared > 0) {
+        const key = [idList[i], idList[j]].sort().join("->");
+        pairWeight.set(key, shared);
+      }
+    }
   }
 
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
-  for (const resourceIds of resourcesByTopic.values()) {
-    for (let i = 0; i < resourceIds.length; i++) {
-      for (let j = i + 1; j < resourceIds.length; j++) {
-        const key = [resourceIds[i], resourceIds[j]].sort().join("->");
-        if (!linkSet.has(key)) {
-          linkSet.add(key);
-          links.push({ source: resourceIds[i]!, target: resourceIds[j]! });
-        }
+  const connectedNodes = new Set<string>();
+
+  // Add strong connections (2+ shared topics)
+  for (const [key, weight] of pairWeight) {
+    if (weight >= 2) {
+      linkSet.add(key);
+      const [a, b] = key.split("->");
+      links.push({ source: a!, target: b! });
+      connectedNodes.add(a!);
+      connectedNodes.add(b!);
+    }
+  }
+
+  // For isolated nodes, add their single strongest connection
+  for (const id of resourceIds) {
+    if (connectedNodes.has(id)) continue;
+    let bestKey = "";
+    let bestWeight = 0;
+    for (const [key, weight] of pairWeight) {
+      if ((key.startsWith(id + "->") || key.endsWith("->" + id)) && weight > bestWeight) {
+        bestWeight = weight;
+        bestKey = key;
       }
+    }
+    if (bestKey && !linkSet.has(bestKey)) {
+      linkSet.add(bestKey);
+      const [a, b] = bestKey.split("->");
+      links.push({ source: a!, target: b! });
     }
   }
 

@@ -41,10 +41,10 @@ function getLayoutedElements(
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: "TB",
-    nodesep: 60,
-    ranksep: 80,
-    marginx: 40,
-    marginy: 40,
+    nodesep: 80,
+    ranksep: 100,
+    marginx: 60,
+    marginy: 60,
   });
 
   for (const node of nodes) {
@@ -148,8 +148,8 @@ function GraphInner() {
       id: `e-${i}-${l.source}-${l.target}`,
       source: l.source,
       target: l.target,
-      style: { stroke: "var(--graph-link)", strokeWidth: 1.5 },
-      animated: false,
+      type: "smoothstep",
+      style: { stroke: "var(--graph-link)", strokeWidth: 1 },
     }));
     return { initialNodes: rfNodes, initialEdges: rfEdges, savedPositions: saved };
   }, [graphData, selectedResource?.id]);
