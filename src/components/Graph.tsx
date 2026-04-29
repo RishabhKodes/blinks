@@ -92,16 +92,41 @@ export function Graph() {
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
+  // Track live simulation positions so new data doesn't reset existing nodes
+  const prevNodesRef = useRef<Map<string, { x: number; y: number; vx: number; vy: number }>>(new Map());
+  const initializedRef = useRef(false);
+
   const forceData = useMemo(() => {
+    const prevPositions = prevNodesRef.current;
+
+    // Capture current simulation positions from the force graph instance
+    const fg = fgRef.current;
+    if (fg?.graphData) {
+      const simNodes = fg.graphData().nodes;
+      for (const sn of simNodes) {
+        if (sn.id && sn.x != null && sn.y != null) {
+          prevPositions.set(sn.id, { x: sn.x, y: sn.y, vx: sn.vx ?? 0, vy: sn.vy ?? 0 });
+        }
+      }
+    }
+
     return {
-      nodes: graphData.nodes.map((n) => ({
-        id: n.id,
-        name: n.name,
-        type: n.type,
-        source: n.source,
-        x: n.x,
-        y: n.y,
-      })),
+      nodes: graphData.nodes.map((n) => {
+        const prev = prevPositions.get(n.id);
+        return {
+          id: n.id,
+          name: n.name,
+          type: n.type,
+          source: n.source,
+          // Preserve simulation position for existing nodes; use saved or undefined for new ones
+          x: prev?.x ?? n.x,
+          y: prev?.y ?? n.y,
+          vx: prev?.vx ?? 0,
+          vy: prev?.vy ?? 0,
+          // Pin existing nodes so the simulation only positions new ones
+          ...(prev ? { fx: prev.x, fy: prev.y } : {}),
+        };
+      }),
       links: graphData.links.map((l) => ({
         source: l.source,
         target: l.target,
@@ -109,18 +134,33 @@ export function Graph() {
     };
   }, [graphData]);
 
+  // After data update, unpin nodes so they can still be dragged freely
   useEffect(() => {
-    if (forceData.nodes.length > 0 && fgRef.current) {
-      fgRef.current.d3Force?.("charge")?.strength(-200)?.distanceMax(400);
-      fgRef.current.d3Force?.("link")?.distance(120);
-      fgRef.current.d3Force?.("center")?.strength(0.05);
+    if (!fgRef.current || forceData.nodes.length === 0) return;
 
-      const timer = setTimeout(() => {
-        fgRef.current?.zoomToFit?.(400, 80);
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [forceData.nodes.length]);
+    // Configure forces
+    fgRef.current.d3Force?.("charge")?.strength(-200)?.distanceMax(400);
+    fgRef.current.d3Force?.("link")?.distance(120);
+    fgRef.current.d3Force?.("center")?.strength(0.05);
+
+    // Unpin nodes after the simulation has placed new ones (short tick window)
+    const timer = setTimeout(() => {
+      const fg = fgRef.current;
+      if (!fg?.graphData) return;
+      const simNodes = fg.graphData().nodes;
+      for (const sn of simNodes) {
+        sn.fx = undefined;
+        sn.fy = undefined;
+      }
+      // Only zoom-to-fit on initial load, not on subsequent additions
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        fg.zoomToFit?.(400, 80);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [forceData]);
 
   const handleNodeClick = useCallback(
     (node: GraphNodeObj) => {
@@ -293,10 +333,10 @@ export function Graph() {
       enableNodeDrag={true}
       enableZoomInteraction={true}
       enablePanInteraction={true}
-      cooldownTicks={100}
-      d3AlphaDecay={0.03}
-      d3VelocityDecay={0.4}
-      d3AlphaMin={0.001}
+      cooldownTicks={60}
+      d3AlphaDecay={0.05}
+      d3VelocityDecay={0.5}
+      d3AlphaMin={0.01}
       minZoom={0.3}
       maxZoom={8}
     />
