@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 
 // GET /api/graph -- resources as nodes, shared-topic edges
 export async function GET() {
   const db = getDb();
 
-  const allResources = db.select().from(schema.resources).all();
+  // Only show non-archived resources in the graph
+  const allResources = db
+    .select()
+    .from(schema.resources)
+    .where(isNull(schema.resources.archivedAt))
+    .all();
   const allResourceTopics = db.select().from(schema.resourceTopics).all();
   const allTopics = db.select().from(schema.topics).all();
   const allPositions = db.select().from(schema.graphPositions).all();

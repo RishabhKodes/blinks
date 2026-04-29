@@ -1,0 +1,1 @@
+ALTER TABLE `resources` ADD `archived_at` text;

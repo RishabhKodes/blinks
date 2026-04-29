@@ -8,6 +8,7 @@ import { AddResourceModal } from "@/components/AddResourceModal";
 import { SearchPalette } from "@/components/SearchPalette";
 import { ChatPanel } from "@/components/ChatPanel";
 import { LintPanel } from "@/components/LintPanel";
+import { ArchivedPanel } from "@/components/ArchivedPanel";
 import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
 
@@ -16,6 +17,7 @@ function AppContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [lintOpen, setLintOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const closeModal = useCallback(() => setModalOpen(false), []);
 
@@ -49,6 +51,7 @@ function AppContent() {
       <AddResourceModal open={modalOpen} onClose={closeModal} />
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <LintPanel open={lintOpen} onClose={() => setLintOpen(false)} />
+      <ArchivedPanel open={archiveOpen} onClose={() => setArchiveOpen(false)} />
       <ToastContainer />
 
       {/* Top toolbar */}
@@ -92,6 +95,15 @@ function AppContent() {
             >
               <span className="text-base leading-none">+</span>
               Add
+            </button>
+            <button
+              onClick={() => setArchiveOpen(true)}
+              className="h-9 w-9 rounded-lg bg-surface/70 hover:bg-surface-hover border border-edge-subtle hover:border-edge transition-all text-ink-muted hover:text-ink-secondary flex items-center justify-center backdrop-blur-md"
+              aria-label="Archive"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
             </button>
             <button
               onClick={() => setLintOpen(true)}

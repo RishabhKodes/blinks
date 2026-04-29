@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useApp } from "./AppProvider";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -13,7 +13,8 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function SidePanel() {
-  const { selectedResource, clearSelection } = useApp();
+  const { selectedResource, clearSelection, refreshGraph, addToast } = useApp();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -24,6 +25,44 @@ export function SidePanel() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedResource, clearSelection]);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [selectedResource?.id]);
+
+  const handleArchive = useCallback(async () => {
+    if (!selectedResource) return;
+    try {
+      const res = await fetch(`/api/resources/${selectedResource.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "archive" }),
+      });
+      if (res.ok) {
+        addToast("Resource archived", "success");
+        clearSelection();
+        await refreshGraph();
+      }
+    } catch {
+      addToast("Failed to archive", "error");
+    }
+  }, [selectedResource, clearSelection, refreshGraph, addToast]);
+
+  const handleDelete = useCallback(async () => {
+    if (!selectedResource) return;
+    try {
+      const res = await fetch(`/api/resources/${selectedResource.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        addToast("Resource deleted", "success");
+        clearSelection();
+        await refreshGraph();
+      }
+    } catch {
+      addToast("Failed to delete", "error");
+    }
+  }, [selectedResource, clearSelection, refreshGraph, addToast]);
 
   if (!selectedResource) return null;
 
@@ -111,7 +150,7 @@ export function SidePanel() {
         )}
 
         {/* Metadata */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 border-b border-edge">
           <h3 className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-2">Saved</h3>
           <p className="text-sm text-ink-faint">
             {new Date(selectedResource.savedAt).toLocaleDateString(undefined, {
@@ -120,6 +159,39 @@ export function SidePanel() {
               day: "numeric",
             })}
           </p>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 py-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleArchive}
+              className="flex-1 h-9 rounded-lg bg-surface hover:bg-surface-hover border border-edge text-sm text-ink-secondary hover:text-ink transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              Archive
+            </button>
+            {!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex-1 h-9 rounded-lg bg-surface hover:bg-red-500/10 border border-edge hover:border-red-500/30 text-sm text-ink-secondary hover:text-red-500 transition-colors flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
+              </button>
+            ) : (
+              <button
+                onClick={handleDelete}
+                className="flex-1 h-9 rounded-lg bg-red-500/15 border border-red-500/30 text-sm text-red-500 font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                Confirm delete
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>

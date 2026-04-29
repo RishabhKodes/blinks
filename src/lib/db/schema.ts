@@ -18,6 +18,7 @@ export const resources = sqliteTable("resources", {
   thumbnail: text("thumbnail").notNull().default(""),
   summary: text("summary").notNull().default(""),
   savedAt: text("saved_at").notNull(),
+  archivedAt: text("archived_at"),
 });
 
 export const resourceTopics = sqliteTable("resource_topics", {
