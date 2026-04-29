@@ -138,10 +138,22 @@ export function Graph() {
   useEffect(() => {
     if (!fgRef.current || forceData.nodes.length === 0) return;
 
-    // Configure forces
-    fgRef.current.d3Force?.("charge")?.strength(-200)?.distanceMax(400);
-    fgRef.current.d3Force?.("link")?.distance(120);
-    fgRef.current.d3Force?.("center")?.strength(0.05);
+    // Configure forces -- strong repulsion to prevent card overlap
+    fgRef.current.d3Force?.("charge")?.strength(-600)?.distanceMax(600);
+    fgRef.current.d3Force?.("link")?.distance(200);
+    fgRef.current.d3Force?.("center")?.strength(0.03);
+
+    // Add collision force to keep card-sized nodes from overlapping
+    if (!fgRef.current.d3Force("collide")) {
+      // @ts-expect-error -- d3-force-3d has no type declarations
+      import("d3-force-3d").then((d3f: { forceCollide: () => { radius: (r: number) => { strength: (s: number) => { iterations: (i: number) => unknown } } } }) => {
+        if (!fgRef.current) return;
+        fgRef.current.d3Force(
+          "collide",
+          d3f.forceCollide().radius(110).strength(1).iterations(4)
+        );
+      }).catch(() => {});
+    }
 
     // Unpin nodes after the simulation has placed new ones (short tick window)
     const timer = setTimeout(() => {
