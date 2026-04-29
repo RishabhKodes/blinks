@@ -1,15 +1,26 @@
 "use client";
 
-import { useRef, useCallback, useState, useEffect, useMemo } from "react";
-import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  ReactFlow,
+  Background,
+  useNodesState,
+  useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
+  type Node,
+  type Edge,
+  type NodeProps,
+  Handle,
+  Position,
+} from "@xyflow/react";
+import Dagre from "@dagrejs/dagre";
 import { useApp } from "./AppProvider";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
-  ssr: false,
-});
+// -- Constants ----------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GraphNodeObj = any;
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 44;
 
 const TYPE_ACCENT: Record<string, string> = {
   article: "#3b82f6",
@@ -20,282 +31,211 @@ const TYPE_ACCENT: Record<string, string> = {
   other: "#737373",
 };
 
-const NODE_H = 36;
-const NODE_PAD_X = 14;
-const NODE_CORNER = 10;
-const ACCENT_W = 4;
+// -- Dagre layout helper ------------------------------------------------------
 
-function getThemeColors() {
-  const root = getComputedStyle(document.documentElement);
-  return {
-    bg: root.getPropertyValue("--graph-bg").trim(),
-    nodeFill: root.getPropertyValue("--bg-surface").trim(),
-    nodeFillHover: root.getPropertyValue("--bg-surface-hover").trim(),
-    nodeStroke: root.getPropertyValue("--border-color").trim(),
-    nodeStrokeHover: root.getPropertyValue("--fg-muted").trim(),
-    label: root.getPropertyValue("--fg").trim(),
-    labelMuted: root.getPropertyValue("--fg-secondary").trim(),
-    link: root.getPropertyValue("--graph-link").trim(),
-  };
-}
-
-function truncateLabel(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max - 1) + "\u2026";
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
+function getLayoutedElements(
+  nodes: Node[],
+  edges: Edge[],
+  savedPositions: Map<string, { x: number; y: number }>
 ) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
+  const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+  g.setGraph({
+    rankdir: "TB",
+    nodesep: 60,
+    ranksep: 80,
+    marginx: 40,
+    marginy: 40,
+  });
+
+  for (const node of nodes) {
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  Dagre.layout(g);
+
+  const layoutedNodes = nodes.map((node) => {
+    const saved = savedPositions.get(node.id);
+    const dagreNode = g.node(node.id);
+    return {
+      ...node,
+      position: saved
+        ? { x: saved.x, y: saved.y }
+        : { x: dagreNode.x - NODE_WIDTH / 2, y: dagreNode.y - NODE_HEIGHT / 2 },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges };
 }
 
-export function Graph() {
-  const { graphData, selectResource, clearSelection, selectedResource, theme } = useApp();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fgRef = useRef<any>(null);
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [colors, setColors] = useState(() => ({
-    bg: "#1a1b1e",
-    nodeFill: "#242529",
-    nodeFillHover: "#2e3035",
-    nodeStroke: "#363840",
-    nodeStrokeHover: "#8b8f98",
-    label: "#e4e4e8",
-    labelMuted: "#b0b3ba",
-    link: "rgba(160, 165, 175, 0.3)",
-  }));
+// -- Custom node component ----------------------------------------------------
 
-  useEffect(() => {
-    const t = setTimeout(() => setColors(getThemeColors()), 50);
-    return () => clearTimeout(t);
-  }, [theme]);
+function ResourceNode({ data, selected }: NodeProps) {
+  const accent = TYPE_ACCENT[data.type as string] || TYPE_ACCENT.other;
+  const label =
+    typeof data.label === "string" && data.label.length > 34
+      ? data.label.slice(0, 33) + "\u2026"
+      : (data.label as string);
 
-  useEffect(() => {
-    function updateSize() {
-      setDimensions({ width: window.innerWidth, height: window.innerHeight });
-    }
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
+  return (
+    <>
+      <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
+      <div
+        className={`
+          flex items-center rounded-[10px] border overflow-hidden
+          bg-[var(--bg-surface)] text-[var(--fg-secondary)]
+          transition-shadow transition-colors duration-150
+          ${selected
+            ? "border-[var(--fg-muted)] shadow-lg"
+            : "border-[var(--border-color)] hover:border-[var(--fg-muted)] hover:shadow-md"
+          }
+        `}
+        style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
+      >
+        {/* Accent bar */}
+        <div
+          className="w-1 self-stretch shrink-0"
+          style={{ backgroundColor: accent }}
+        />
+        {/* Label */}
+        <span
+          className={`
+            px-3 text-[13px] font-semibold truncate
+            ${selected ? "text-[var(--fg)]" : "text-[var(--fg-secondary)]"}
+          `}
+        >
+          {label}
+        </span>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0" />
+    </>
+  );
+}
 
-  // Track live simulation positions so new data doesn't reset existing nodes
-  const prevNodesRef = useRef<Map<string, { x: number; y: number; vx: number; vy: number }>>(new Map());
+const nodeTypes = { resource: ResourceNode };
+
+// -- Inner graph (needs ReactFlowProvider above) ------------------------------
+
+function GraphInner() {
+  const { graphData, selectResource, clearSelection, selectedResource } = useApp();
+  const { fitView } = useReactFlow();
   const initializedRef = useRef(false);
+  const prevNodeCountRef = useRef(0);
 
-  const forceData = useMemo(() => {
-    const prevPositions = prevNodesRef.current;
-
-    // Capture current simulation positions from the force graph instance
-    const fg = fgRef.current;
-    if (fg?.graphData) {
-      const simNodes = fg.graphData().nodes;
-      for (const sn of simNodes) {
-        if (sn.id && sn.x != null && sn.y != null) {
-          prevPositions.set(sn.id, { x: sn.x, y: sn.y, vx: sn.vx ?? 0, vy: sn.vy ?? 0 });
-        }
+  // Convert app data to React Flow format
+  const { initialNodes, initialEdges, savedPositions } = useMemo(() => {
+    const saved = new Map<string, { x: number; y: number }>();
+    const rfNodes: Node[] = graphData.nodes.map((n) => {
+      if (n.x != null && n.y != null) {
+        saved.set(n.id, { x: n.x, y: n.y });
       }
-    }
-
-    return {
-      nodes: graphData.nodes.map((n) => {
-        const prev = prevPositions.get(n.id);
-        return {
-          id: n.id,
-          name: n.name,
+      return {
+        id: n.id,
+        type: "resource",
+        position: { x: 0, y: 0 },
+        data: {
+          label: n.name,
           type: n.type,
           source: n.source,
-          // Preserve simulation position for existing nodes; use saved or undefined for new ones
-          x: prev?.x ?? n.x,
-          y: prev?.y ?? n.y,
-          vx: prev?.vx ?? 0,
-          vy: prev?.vy ?? 0,
-          // Pin existing nodes so the simulation only positions new ones
-          ...(prev ? { fx: prev.x, fy: prev.y } : {}),
-        };
-      }),
-      links: graphData.links.map((l) => ({
-        source: l.source,
-        target: l.target,
-      })),
-    };
-  }, [graphData]);
+        },
+        selected: selectedResource?.id === n.id,
+      };
+    });
+    const rfEdges: Edge[] = graphData.links.map((l, i) => ({
+      id: `e-${i}-${l.source}-${l.target}`,
+      source: l.source,
+      target: l.target,
+      style: { stroke: "var(--graph-link)", strokeWidth: 1.5 },
+      animated: false,
+    }));
+    return { initialNodes: rfNodes, initialEdges: rfEdges, savedPositions: saved };
+  }, [graphData, selectedResource?.id]);
 
-  // After data update, unpin nodes so they can still be dragged freely
+  // Apply dagre layout
+  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
+    () => getLayoutedElements(initialNodes, initialEdges, savedPositions),
+    [initialNodes, initialEdges, savedPositions]
+  );
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
+
+  // Sync when graph data changes
   useEffect(() => {
-    if (!fgRef.current || forceData.nodes.length === 0) return;
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
 
-    // Configure forces -- strong repulsion to prevent card overlap
-    fgRef.current.d3Force?.("charge")?.strength(-600)?.distanceMax(600);
-    fgRef.current.d3Force?.("link")?.distance(200);
-    fgRef.current.d3Force?.("center")?.strength(0.03);
-
-    // Add collision force to keep card-sized nodes from overlapping
-    if (!fgRef.current.d3Force("collide")) {
-      // @ts-expect-error -- d3-force-3d has no type declarations
-      import("d3-force-3d").then((d3f: { forceCollide: () => { radius: (r: number) => { strength: (s: number) => { iterations: (i: number) => unknown } } } }) => {
-        if (!fgRef.current) return;
-        fgRef.current.d3Force(
-          "collide",
-          d3f.forceCollide().radius(110).strength(1).iterations(4)
-        );
-      }).catch(() => {});
+    // Fit view on first load only
+    if (!initializedRef.current && layoutedNodes.length > 0) {
+      initializedRef.current = true;
+      setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
     }
 
-    // Unpin nodes after the simulation has placed new ones (short tick window)
-    const timer = setTimeout(() => {
-      const fg = fgRef.current;
-      if (!fg?.graphData) return;
-      const simNodes = fg.graphData().nodes;
-      for (const sn of simNodes) {
-        sn.fx = undefined;
-        sn.fy = undefined;
-      }
-      // Only zoom-to-fit on initial load, not on subsequent additions
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-        fg.zoomToFit?.(400, 80);
-      }
-    }, 300);
+    // Fit view when nodes are added (not on delete/archive)
+    if (layoutedNodes.length > prevNodeCountRef.current && prevNodeCountRef.current > 0) {
+      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
+    }
+    prevNodeCountRef.current = layoutedNodes.length;
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
 
-    return () => clearTimeout(timer);
-  }, [forceData]);
-
-  const handleNodeClick = useCallback(
-    (node: GraphNodeObj) => {
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
       selectResource(node.id);
     },
     [selectResource]
   );
 
-  const handleNodeDragEnd = useCallback(async (node: GraphNodeObj) => {
-    if (node.x == null || node.y == null) return;
-    try {
-      await fetch("/api/graph", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          positions: [{ nodeId: node.id, x: node.x, y: node.y }],
-        }),
-      });
-    } catch {
-      // silently fail
-    }
-  }, []);
+  const onPaneClick = useCallback(() => {
+    clearSelection();
+  }, [clearSelection]);
 
-  const paintNode = useCallback(
-    (node: GraphNodeObj, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const cx = node.x ?? 0;
-      const cy = node.y ?? 0;
-      const isHovered = hoveredNodeId === node.id;
-      const isSelected = selectedResource?.id === node.id;
-      const active = isHovered || isSelected;
-
-      const fontSize = Math.max(13 / globalScale, 2);
-      ctx.font = `600 ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
-      const label = truncateLabel(node.name, 32);
-      const textW = ctx.measureText(label).width;
-
-      const padX = NODE_PAD_X / globalScale;
-      const accentW = ACCENT_W / globalScale;
-      const h = NODE_H / globalScale;
-      const w = textW + padX * 2 + accentW;
-      const r = NODE_CORNER / globalScale;
-
-      const x = cx - w / 2;
-      const y = cy - h / 2;
-
-      // Shadow
-      if (active) {
-        ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,0.25)";
-        ctx.shadowBlur = 12 / globalScale;
-        ctx.shadowOffsetY = 2 / globalScale;
-        roundRect(ctx, x, y, w, h, r);
-        ctx.fillStyle = active ? colors.nodeFillHover : colors.nodeFill;
-        ctx.fill();
-        ctx.restore();
+  // Save position when user drags a node
+  const onNodeDragStop = useCallback(
+    async (_: React.MouseEvent, node: Node) => {
+      try {
+        await fetch("/api/graph", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            positions: [{ nodeId: node.id, x: Math.round(node.position.x), y: Math.round(node.position.y) }],
+          }),
+        });
+      } catch {
+        // silently fail
       }
-
-      // Card body
-      roundRect(ctx, x, y, w, h, r);
-      ctx.fillStyle = active ? colors.nodeFillHover : colors.nodeFill;
-      ctx.fill();
-      ctx.strokeStyle = active ? colors.nodeStrokeHover : colors.nodeStroke;
-      ctx.lineWidth = (active ? 1.8 : 1.2) / globalScale;
-      ctx.stroke();
-
-      // Type accent bar (left edge)
-      const accent = TYPE_ACCENT[node.type] || TYPE_ACCENT.other;
-      const barR = r;
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(x + barR, y);
-      ctx.lineTo(x + accentW, y);
-      ctx.lineTo(x + accentW, y + h);
-      ctx.lineTo(x + barR, y + h);
-      ctx.arcTo(x, y + h, x, y + h - barR, barR);
-      ctx.lineTo(x, y + barR);
-      ctx.arcTo(x, y, x + barR, y, barR);
-      ctx.closePath();
-      ctx.fillStyle = accent;
-      ctx.fill();
-      ctx.restore();
-
-      // Label
-      ctx.fillStyle = active ? colors.label : colors.labelMuted;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, x + accentW + padX * 0.6, cy + 0.5 / globalScale);
-    },
-    [hoveredNodeId, selectedResource, colors]
-  );
-
-  const paintNodeArea = useCallback(
-    (node: GraphNodeObj, color: string, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const cx = node.x ?? 0;
-      const cy = node.y ?? 0;
-
-      const fontSize = Math.max(13 / globalScale, 2);
-      ctx.font = `600 ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
-      const label = truncateLabel(node.name, 32);
-      const textW = ctx.measureText(label).width;
-
-      const padX = NODE_PAD_X / globalScale;
-      const accentW = ACCENT_W / globalScale;
-      const h = NODE_H / globalScale;
-      const w = textW + padX * 2 + accentW;
-      const r = NODE_CORNER / globalScale;
-
-      roundRect(ctx, cx - w / 2, cy - h / 2, w, h, r);
-      ctx.fillStyle = color;
-      ctx.fill();
     },
     []
   );
 
-  const handleNodeHover = useCallback((node: GraphNodeObj | null) => {
-    setHoveredNodeId(node?.id ?? null);
-  }, []);
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
+      onNodeClick={onNodeClick}
+      onPaneClick={onPaneClick}
+      onNodeDragStop={onNodeDragStop}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.1}
+      maxZoom={4}
+      proOptions={{ hideAttribution: true }}
+      className="!bg-[var(--bg-page)]"
+    >
+      <Background color="var(--border-subtle)" gap={32} size={1} />
+    </ReactFlow>
+  );
+}
 
-  const handleBackgroundClick = useCallback(() => {
-    clearSelection();
-  }, [clearSelection]);
+// -- Exported component -------------------------------------------------------
 
-  const linkColor = useCallback(() => colors.link, [colors]);
+export function Graph() {
+  const { graphData } = useApp();
 
   if (graphData.nodes.length === 0) {
     return (
@@ -324,33 +264,11 @@ export function Graph() {
     );
   }
 
-  if (dimensions.width === 0) return null;
-
   return (
-    <ForceGraph2D
-      ref={fgRef}
-      graphData={forceData}
-      width={dimensions.width}
-      height={dimensions.height}
-      backgroundColor={colors.bg}
-      nodeCanvasObject={paintNode}
-      nodeCanvasObjectMode={() => "replace"}
-      nodePointerAreaPaint={paintNodeArea}
-      linkColor={linkColor}
-      linkWidth={1.2}
-      onNodeClick={handleNodeClick}
-      onNodeHover={handleNodeHover}
-      onNodeDragEnd={handleNodeDragEnd}
-      onBackgroundClick={handleBackgroundClick}
-      enableNodeDrag={true}
-      enableZoomInteraction={true}
-      enablePanInteraction={true}
-      cooldownTicks={60}
-      d3AlphaDecay={0.05}
-      d3VelocityDecay={0.5}
-      d3AlphaMin={0.01}
-      minZoom={0.3}
-      maxZoom={8}
-    />
+    <div className="w-full h-screen">
+      <ReactFlowProvider>
+        <GraphInner />
+      </ReactFlowProvider>
+    </div>
   );
 }

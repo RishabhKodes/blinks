@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "@xyflow/react": "^12.10.2",
     "better-sqlite3": "^12.9.0",
     "defuddle": "^0.18.1",
     "drizzle-orm": "^0.45.2",
