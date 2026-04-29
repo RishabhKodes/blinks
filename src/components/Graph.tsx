@@ -33,6 +33,9 @@ const TYPE_ACCENT: Record<string, string> = {
 
 // -- Dagre layout helper ------------------------------------------------------
 
+const MIN_GAP_X = NODE_WIDTH + 40;  // minimum horizontal gap (node width + padding)
+const MIN_GAP_Y = NODE_HEIGHT + 40; // minimum vertical gap (node height + padding)
+
 function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
@@ -41,8 +44,8 @@ function getLayoutedElements(
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: "TB",
-    nodesep: 80,
-    ranksep: 100,
+    nodesep: 120,
+    ranksep: 120,
     marginx: 60,
     marginy: 60,
   });
@@ -57,16 +60,53 @@ function getLayoutedElements(
 
   Dagre.layout(g);
 
-  const layoutedNodes = nodes.map((node) => {
+  const positions = nodes.map((node) => {
     const saved = savedPositions.get(node.id);
     const dagreNode = g.node(node.id);
     return {
-      ...node,
-      position: saved
-        ? { x: saved.x, y: saved.y }
-        : { x: dagreNode.x - NODE_WIDTH / 2, y: dagreNode.y - NODE_HEIGHT / 2 },
+      id: node.id,
+      x: saved ? saved.x : dagreNode.x - NODE_WIDTH / 2,
+      y: saved ? saved.y : dagreNode.y - NODE_HEIGHT / 2,
+      fromSaved: !!saved,
     };
   });
+
+  // Push apart any nodes that are too close (only adjust non-saved positions)
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const a = positions[i]!;
+        const b = positions[j]!;
+        const dx = Math.abs(a.x - b.x);
+        const dy = Math.abs(a.y - b.y);
+
+        // Only fix if nodes overlap (both axes within min gap)
+        if (dx < MIN_GAP_X && dy < MIN_GAP_Y) {
+          // Push apart on whichever axis has more room
+          if (dx < MIN_GAP_X) {
+            const pushX = (MIN_GAP_X - dx) / 2 + 1;
+            if (!a.fromSaved) a.x -= pushX;
+            if (!b.fromSaved) b.x += pushX;
+            if (a.fromSaved) b.x += pushX * 2;
+            if (b.fromSaved) a.x -= pushX * 2;
+          }
+          if (dy < MIN_GAP_Y) {
+            const pushY = (MIN_GAP_Y - dy) / 2 + 1;
+            if (!a.fromSaved) a.y -= pushY;
+            if (!b.fromSaved) b.y += pushY;
+            if (a.fromSaved) b.y += pushY * 2;
+            if (b.fromSaved) a.y -= pushY * 2;
+          }
+        }
+      }
+    }
+  }
+
+  const posMap = new Map(positions.map((p) => [p.id, { x: p.x, y: p.y }]));
+  const layoutedNodes = nodes.map((node) => ({
+    ...node,
+    position: posMap.get(node.id)!,
+  }));
 
   return { nodes: layoutedNodes, edges };
 }
