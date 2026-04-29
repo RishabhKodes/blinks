@@ -78,14 +78,19 @@ export async function POST(request: Request) {
   // Step 4: Create resource
   const id = uuidv4();
   const now = new Date().toISOString();
-  const slug = resourceSlug(content.title);
+
+  // Prefer LLM-generated title when the fetcher only returned the URL
+  const isUrlTitle = content.title === content.url || content.title.startsWith("http");
+  const title = (isUrlTitle && classification.title) ? classification.title : content.title;
+
+  const slug = resourceSlug(title);
   ensureVaultStructure();
 
   db.insert(schema.resources)
     .values({
       id,
       url: content.url,
-      title: content.title,
+      title,
       type: content.type,
       author: content.author,
       source: content.source,
@@ -160,7 +165,7 @@ export async function POST(request: Request) {
     slug,
     {
       url: content.url,
-      title: content.title,
+      title,
       type: content.type,
       author: content.author,
       source: content.source,
@@ -178,7 +183,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
-      resource: { id, url: content.url, title: content.title, type: content.type, topics: classification.topics },
+      resource: { id, url: content.url, title, type: content.type, topics: classification.topics },
       classification,
     },
     { status: 201 }

@@ -6,6 +6,7 @@ export interface GraphContext {
 }
 
 export interface ClassificationResult {
+  title: string;
   summary: string;
   keyConcepts: string[];
   whyItMatters: string;
@@ -19,26 +20,25 @@ function buildSystemPrompt(context: GraphContext): string {
     ? `\nExisting topics in the knowledge graph: ${context.existingTopics.join(", ")}`
     : "\nThe knowledge graph is currently empty (no existing topics).";
 
-  return `You organize web resources into a knowledge graph where TOPICS are the nodes. Topics are short concept names like "LLMs", "Fine Tuning", "React", "Agentic AI", "Transformer Architecture".
-
-Your job: summarize the resource, assign it to 1-3 topics, and define how those topics connect to each other and to existing topics.
+  return `You organize web resources into a knowledge graph. Topics are short concept names like "LLMs", "Fine Tuning", "React", "Agentic AI", "Transformer Architecture". Resources that share topics become connected in the graph.
 ${topicList}
 
 Respond with valid JSON only. Keys:
 
+- "title" (string): A clear, concise title for this resource (5-12 words). NOT the URL. Describe what the resource is about.
 - "summary" (string): 2-4 sentence summary. An AI agent should fully understand the resource from this alone.
 - "keyConcepts" (string[]): 3-6 key ideas.
 - "whyItMatters" (string): 1-2 sentences on significance.
 - "connections" (string[]): Format "[[Topic Name]] - how this resource relates to that topic".
-- "topics" (string[]): 1-3 short topic names this resource belongs to. These become nodes in the graph. Keep them concise (1-3 words). Reuse existing topics when the concept matches.
-- "topicRelationships" (string[][]): Pairs of topic names that should be linked in the graph. Each pair is [topic1, topic2]. Link topics that have a parent-child, sibling, or strong conceptual relationship. Use the EXACT topic names from your "topics" list and from existing topics. Example: [["LLMs", "Fine Tuning"], ["Fine Tuning", "LoRA"]]
+- "topics" (string[]): 2-3 short topic names this resource belongs to. These are used to connect related resources in the graph. Keep them concise (1-3 words). You MUST reuse existing topics when the concept is relevant -- this is how resources get connected to each other.
+- "topicRelationships" (string[][]): Pairs of topic names that should be linked. Each pair is [topic1, topic2]. Use EXACT topic names from your "topics" list and from existing topics. Example: [["LLMs", "Fine Tuning"], ["Fine Tuning", "LoRA"]]
 
 RULES:
 1. Topic names should be short concept labels (1-3 words), NOT URLs or full titles.
-2. Reuse existing topic names when the concept matches instead of creating near-duplicates.
-3. topicRelationships should only link topics that have a genuine conceptual connection.
-4. Every topic in your "topics" list should appear in at least one relationship (either with another new topic or an existing one), unless the graph is empty.
-5. If the graph is empty, you can still define relationships between the new topics you create.`;
+2. ALWAYS assign at least 2 topics. At least one MUST be an existing topic if any existing topic is even loosely relevant. This ensures new resources connect to the graph.
+3. Only create a new topic when no existing topic covers the concept.
+4. topicRelationships should only link topics that have a genuine conceptual connection.
+5. Every topic in your "topics" list should appear in at least one relationship (either with another new topic or an existing one), unless the graph is empty.`;
 }
 
 function buildUserPrompt(content: FetchedContent, userNotes?: string): string {
@@ -67,6 +67,7 @@ function extractJsonFromResponse(raw: string): string {
 }
 
 const FALLBACK: ClassificationResult = {
+  title: "",
   summary: "",
   keyConcepts: [],
   whyItMatters: "",
@@ -115,6 +116,7 @@ export async function classifyResource(
       : [];
 
     return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
       summary: typeof parsed.summary === "string" ? parsed.summary : content.description || "",
       keyConcepts: Array.isArray(parsed.keyConcepts)
         ? parsed.keyConcepts.filter((c: unknown) => typeof c === "string")
