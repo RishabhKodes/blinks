@@ -7,7 +7,6 @@ import { SidePanel } from "@/components/SidePanel";
 import { AddResourceModal } from "@/components/AddResourceModal";
 import { SearchPalette } from "@/components/SearchPalette";
 import { ChatPanel } from "@/components/ChatPanel";
-import { LintPanel } from "@/components/LintPanel";
 import { ArchivedPanel } from "@/components/ArchivedPanel";
 import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
@@ -16,7 +15,6 @@ function AppContent() {
   const { graphData, theme, toggleTheme, chatOpen, setChatOpen } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [lintOpen, setLintOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
 
   const closeModal = useCallback(() => setModalOpen(false), []);
@@ -50,7 +48,6 @@ function AppContent() {
       <ChatPanel />
       <AddResourceModal open={modalOpen} onClose={closeModal} />
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
-      <LintPanel open={lintOpen} onClose={() => setLintOpen(false)} />
       <ArchivedPanel open={archiveOpen} onClose={() => setArchiveOpen(false)} />
       <ToastContainer />
 
@@ -103,15 +100,6 @@ function AppContent() {
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setLintOpen(true)}
-              className="h-9 w-9 rounded-lg bg-surface/70 hover:bg-surface-hover border border-edge-subtle hover:border-edge transition-all text-ink-muted hover:text-ink-secondary flex items-center justify-center backdrop-blur-md"
-              aria-label="Health check"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </button>
             {/* Theme toggle */}

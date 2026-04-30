@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ForceGraph2D, {
-  type ForceGraphMethods,
-  type LinkObject,
-  type NodeObject,
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type Ref } from "react";
+import type {
+  ForceGraphMethods,
+  ForceGraphProps,
+  LinkObject,
+  NodeObject,
 } from "react-force-graph-2d";
 import { useApp } from "./AppProvider";
 
@@ -39,6 +40,12 @@ interface CanvasLink {
   source: string | CanvasNode;
   target: string | CanvasNode;
 }
+
+type ForceGraph2DComponent = ComponentType<
+  ForceGraphProps & {
+    ref?: Ref<ForceGraphMethods | null>;
+  }
+>;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -109,15 +116,33 @@ function toDisplayLines(text: string, maxChars = 16, maxLines = 2) {
 
 function GraphCanvas() {
   const { graphData, selectResource, clearSelection, selectedResource, theme } = useApp();
-  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const graphRef = useRef<ForceGraphMethods | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [ForceGraph2DClient, setForceGraph2DClient] = useState<ForceGraph2DComponent | null>(null);
   const initializedRef = useRef(false);
   const prevNodeCountRef = useRef(0);
   const shouldPersistAutoLayoutRef = useRef(false);
   const graphNodesRef = useRef<CanvasNode[]>([]);
 
   const selectedNodeId = selectedResource?.id ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void import("react-force-graph-2d")
+      .then((mod) => {
+        if (cancelled) return;
+        setForceGraph2DClient(() => mod.default as ForceGraph2DComponent);
+      })
+      .catch(() => {
+        // silently fail
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -181,6 +206,22 @@ function GraphCanvas() {
     graphNodesRef.current = graphCanvasData.nodes;
   }, [graphCanvasData.nodes]);
 
+  const fitGraphOverview = useCallback((durationMs: number, paddingPx: number) => {
+    const graph = graphRef.current;
+    if (!graph) return false;
+
+    graph.zoomToFit(durationMs, paddingPx);
+
+    // Slightly zoom out after fitting to keep more context visible on first load.
+    const currentZoom = graph.zoom();
+    if (Number.isFinite(currentZoom) && currentZoom > 0) {
+      const targetZoom = Math.max(0.05, currentZoom * 0.9);
+      graph.zoom(targetZoom, Math.max(100, Math.floor(durationMs * 0.6)));
+    }
+
+    return true;
+  }, []);
+
   const palette = useMemo(
     () =>
       theme === "dark"
@@ -188,10 +229,10 @@ function GraphCanvas() {
             nodeFill: "#23262b",
             nodeStroke: "#8a9099",
             nodeText: "#dfe4ed",
-            selectedFill: "#eceff6",
-            selectedStroke: "#f5f7fb",
-            selectedText: "#1b1e24",
-            selectedGlow: "rgba(236, 239, 246, 0.25)",
+            selectedFill: "#2a3038",
+            selectedStroke: "#c9d2de",
+            selectedText: "#edf2f8",
+            selectedGlow: "rgba(143, 160, 184, 0.3)",
             link: "rgba(145, 151, 162, 0.38)",
             linkSelected: "rgba(226, 231, 241, 0.65)",
           }
@@ -199,10 +240,10 @@ function GraphCanvas() {
             nodeFill: "#f4f5f6",
             nodeStroke: "#595d63",
             nodeText: "#2a2d31",
-            selectedFill: "#14181f",
-            selectedStroke: "#2b3240",
-            selectedText: "#f6f8fc",
-            selectedGlow: "rgba(20, 24, 31, 0.18)",
+            selectedFill: "#e9edf4",
+            selectedStroke: "#3a4558",
+            selectedText: "#1f2835",
+            selectedGlow: "rgba(74, 93, 123, 0.2)",
             link: "rgba(72, 77, 84, 0.35)",
             linkSelected: "rgba(34, 40, 48, 0.62)",
           },
@@ -269,26 +310,46 @@ function GraphCanvas() {
   }, [graphCanvasData]);
 
   useEffect(() => {
-    const graph = graphRef.current;
     const nodeCount = graphCanvasData.nodes.length;
+    const hasViewport = viewport.width > 0 && viewport.height > 0;
+    const isReady = Boolean(ForceGraph2DClient && hasViewport && nodeCount > 0);
 
-    if (!graph || nodeCount === 0) {
+    if (!isReady) {
       prevNodeCountRef.current = nodeCount;
       return;
     }
 
-    const handle = window.setTimeout(() => {
-      if (!initializedRef.current) {
-        graph.zoomToFit(500, 85);
-        initializedRef.current = true;
-      } else if (nodeCount > prevNodeCountRef.current) {
-        graph.zoomToFit(350, 90);
-      }
-      prevNodeCountRef.current = nodeCount;
-    }, 110);
+    const isFirstOverview = !initializedRef.current;
+    const grew = nodeCount > prevNodeCountRef.current;
 
-    return () => window.clearTimeout(handle);
-  }, [graphCanvasData.nodes.length]);
+    prevNodeCountRef.current = nodeCount;
+
+    if (!isFirstOverview && !grew) return;
+
+    const timers = [
+      window.setTimeout(() => {
+        if (fitGraphOverview(isFirstOverview ? 0 : 260, 150)) {
+          initializedRef.current = true;
+        }
+      }, 80),
+      window.setTimeout(() => {
+        fitGraphOverview(220, 170);
+      }, 420),
+      window.setTimeout(() => {
+        fitGraphOverview(260, 185);
+      }, 900),
+    ];
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [
+    ForceGraph2DClient,
+    fitGraphOverview,
+    graphCanvasData.nodes.length,
+    viewport.height,
+    viewport.width,
+  ]);
 
   const onNodeClick = useCallback(
     (node: NodeObject) => {
@@ -343,6 +404,13 @@ function GraphCanvas() {
       const radius = data.radius;
       const strokeWidth = selected ? 2.3 : 1.4;
 
+      if (selected) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 6, 0, 2 * Math.PI, false);
+        ctx.fillStyle = `${accent}22`;
+        ctx.fill();
+      }
+
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
       ctx.fillStyle = selected ? palette.selectedFill : palette.nodeFill;
@@ -360,6 +428,14 @@ function GraphCanvas() {
       ctx.strokeStyle = accent;
       ctx.lineWidth = (selected ? 2 : 1.2) / globalScale;
       ctx.stroke();
+
+      if (selected) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 2, 0, 2 * Math.PI, false);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.6 / globalScale;
+        ctx.stroke();
+      }
 
       const fontSize = Math.max(9, 12 / globalScale);
       const lineHeight = fontSize * 1.22;
@@ -417,8 +493,8 @@ function GraphCanvas() {
         ref={containerRef}
         className="relative h-full w-full overflow-hidden rounded-2xl border border-edge bg-page"
       >
-        {viewport.width > 0 && viewport.height > 0 && (
-          <ForceGraph2D
+        {ForceGraph2DClient && viewport.width > 0 && viewport.height > 0 && (
+          <ForceGraph2DClient
             ref={graphRef}
             graphData={graphCanvasData}
             width={viewport.width}
@@ -433,7 +509,7 @@ function GraphCanvas() {
             nodePointerAreaPaint={nodePointerAreaPaint}
             linkColor={linkColor}
             linkWidth={linkWidth}
-            minZoom={0.2}
+            minZoom={0.05}
             maxZoom={3.5}
             warmupTicks={80}
             cooldownTicks={200}
