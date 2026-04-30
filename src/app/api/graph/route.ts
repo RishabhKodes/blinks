@@ -28,66 +28,20 @@ export async function GET() {
     topicsByResource.set(rt.resourceId, arr);
   }
 
-  // Build edges weighted by number of shared topics
-  // Only show edges where resources share 2+ topics (strong connections)
-  // For isolated nodes, add their single best connection so nothing floats alone
-  const resourceIds = new Set(allResources.map((r) => r.id));
-  const topicSetsById = new Map<string, Set<string>>();
-  for (const rt of allResourceTopics) {
-    if (!resourceIds.has(rt.resourceId)) continue;
-    const s = topicSetsById.get(rt.resourceId) || new Set<string>();
-    s.add(rt.topicId);
-    topicSetsById.set(rt.resourceId, s);
-  }
-
-  // Count shared topics between each pair
-  const pairWeight = new Map<string, number>();
-  const idList = [...topicSetsById.keys()];
-  for (let i = 0; i < idList.length; i++) {
-    const aTopics = topicSetsById.get(idList[i]!)!;
-    for (let j = i + 1; j < idList.length; j++) {
-      const bTopics = topicSetsById.get(idList[j]!)!;
-      let shared = 0;
-      for (const t of aTopics) {
-        if (bTopics.has(t)) shared++;
-      }
-      if (shared > 0) {
-        const key = [idList[i], idList[j]].sort().join("->");
-        pairWeight.set(key, shared);
-      }
-    }
-  }
+  // Build edges from LLM-judged resource_links
+  const resourceIdSet = new Set(allResources.map((r) => r.id));
+  const allResourceLinks = db.select().from(schema.resourceLinks).all();
 
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
-  const connectedNodes = new Set<string>();
-
-  // Add strong connections (2+ shared topics)
-  for (const [key, weight] of pairWeight) {
-    if (weight >= 2) {
+  for (const rl of allResourceLinks) {
+    // Only include edges where both resources are active (non-archived)
+    if (!resourceIdSet.has(rl.sourceResourceId) || !resourceIdSet.has(rl.targetResourceId)) continue;
+    // Deduplicate (edges stored as one direction)
+    const key = [rl.sourceResourceId, rl.targetResourceId].sort().join("->");
+    if (!linkSet.has(key)) {
       linkSet.add(key);
-      const [a, b] = key.split("->");
-      links.push({ source: a!, target: b! });
-      connectedNodes.add(a!);
-      connectedNodes.add(b!);
-    }
-  }
-
-  // For isolated nodes, add their single strongest connection
-  for (const id of resourceIds) {
-    if (connectedNodes.has(id)) continue;
-    let bestKey = "";
-    let bestWeight = 0;
-    for (const [key, weight] of pairWeight) {
-      if ((key.startsWith(id + "->") || key.endsWith("->" + id)) && weight > bestWeight) {
-        bestWeight = weight;
-        bestKey = key;
-      }
-    }
-    if (bestKey && !linkSet.has(bestKey)) {
-      linkSet.add(bestKey);
-      const [a, b] = bestKey.split("->");
-      links.push({ source: a!, target: b! });
+      links.push({ source: rl.sourceResourceId, target: rl.targetResourceId });
     }
   }
 

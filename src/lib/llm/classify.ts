@@ -76,6 +76,81 @@ const FALLBACK: ClassificationResult = {
   topicRelationships: [],
 };
 
+// -- LLM-judged resource connections ------------------------------------------
+
+export interface ExistingResource {
+  id: string;
+  title: string;
+  summary: string;
+  topics: string[];
+}
+
+export interface ResourceConnection {
+  resourceId: string;
+  reason: string;
+}
+
+export async function findRelatedResources(
+  newResource: { title: string; summary: string; topics: string[] },
+  existingResources: ExistingResource[]
+): Promise<ResourceConnection[]> {
+  if (existingResources.length === 0) return [];
+
+  const listing = existingResources
+    .map((r, i) => `[${i}] "${r.title}" - ${r.summary} (topics: ${r.topics.join(", ")})`)
+    .join("\n");
+
+  const systemPrompt = `You decide which existing resources in a knowledge graph are genuinely related to a newly added resource.
+
+Rules:
+- Only pick resources with a REAL conceptual connection (shared domain, complementary ideas, same technology, continuation of a theme).
+- Do NOT connect resources that merely share a broad category like "AI" or "technology".
+- Return at most 3 connections. Fewer is fine. Zero is fine if nothing is truly related.
+- Respond with valid JSON only: { "related": [{ "index": <number>, "reason": "<1 sentence>" }, ...] }
+- "index" is the number in brackets from the list below.`;
+
+  const userPrompt = `NEW RESOURCE:
+Title: ${newResource.title}
+Summary: ${newResource.summary}
+Topics: ${newResource.topics.join(", ")}
+
+EXISTING RESOURCES:
+${listing}`;
+
+  let rawResponse: string;
+  try {
+    rawResponse = await chatCompletion(systemPrompt, userPrompt, "gpt-5-nano");
+  } catch (error) {
+    console.error("LLM connection call failed:", error);
+    return [];
+  }
+
+  try {
+    const jsonStr = extractJsonFromResponse(rawResponse);
+    const parsed = JSON.parse(jsonStr);
+    const related: ResourceConnection[] = [];
+
+    if (Array.isArray(parsed.related)) {
+      for (const entry of parsed.related) {
+        const idx = typeof entry.index === "number" ? entry.index : -1;
+        if (idx >= 0 && idx < existingResources.length) {
+          related.push({
+            resourceId: existingResources[idx]!.id,
+            reason: typeof entry.reason === "string" ? entry.reason : "",
+          });
+        }
+      }
+    }
+
+    return related.slice(0, 3);
+  } catch (parseError) {
+    console.error("Failed to parse LLM connection response:", parseError);
+    return [];
+  }
+}
+
+// -- Resource classification --------------------------------------------------
+
 export async function classifyResource(
   content: FetchedContent,
   context: GraphContext,
@@ -86,7 +161,7 @@ export async function classifyResource(
 
   let rawResponse: string;
   try {
-    rawResponse = await chatCompletion(systemPrompt, userPrompt);
+    rawResponse = await chatCompletion(systemPrompt, userPrompt, "gpt-5-mini");
   } catch (error) {
     console.error("LLM call failed:", error);
     return {

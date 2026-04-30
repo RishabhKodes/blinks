@@ -9,8 +9,8 @@ import {
   ensureVaultStructure,
 } from "@/lib/vault";
 import { fetchContent } from "@/lib/content/fetcher";
-import { classifyResource } from "@/lib/llm/classify";
-import type { GraphContext } from "@/lib/llm/classify";
+import { classifyResource, findRelatedResources } from "@/lib/llm/classify";
+import type { GraphContext, ExistingResource } from "@/lib/llm/classify";
 
 function getGraphContext(): GraphContext {
   const db = getDb();
@@ -158,7 +158,44 @@ export async function POST(request: Request) {
     }
   }
 
-  // Step 7: Write markdown file
+  // Step 7: Find related resources via LLM and create resource-to-resource links
+  const allExisting = db
+    .select()
+    .from(schema.resources)
+    .all()
+    .filter((r) => r.id !== id && !r.archivedAt);
+
+  if (allExisting.length > 0) {
+    // Build existing resources with their topics for the LLM
+    const existingForLLM: ExistingResource[] = allExisting.map((r) => {
+      const rTopics = db
+        .select({ topicId: schema.resourceTopics.topicId })
+        .from(schema.resourceTopics)
+        .where(eq(schema.resourceTopics.resourceId, r.id))
+        .all();
+      const topicNames = rTopics
+        .map((rt) => {
+          const t = db.select().from(schema.topics).where(eq(schema.topics.id, rt.topicId)).get();
+          return t?.name;
+        })
+        .filter(Boolean) as string[];
+      return { id: r.id, title: r.title, summary: r.summary, topics: topicNames };
+    });
+
+    const connections = await findRelatedResources(
+      { title, summary: classification.summary, topics: classification.topics },
+      existingForLLM
+    );
+
+    for (const conn of connections) {
+      // Insert both directions for undirected edge
+      db.insert(schema.resourceLinks)
+        .values({ sourceResourceId: id, targetResourceId: conn.resourceId })
+        .run();
+    }
+  }
+
+  // Step 8: Write markdown file
   const primaryTopicId = slugify(classification.topics[0] || "uncategorized");
   writeResourceFile(
     primaryTopicId,

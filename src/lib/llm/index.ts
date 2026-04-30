@@ -13,13 +13,13 @@ function getProvider(): LLMProvider {
   return provider;
 }
 
-async function claudeChat(systemPrompt: string, userPrompt: string): Promise<string> {
+async function claudeChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is required when LLM_PROVIDER is 'claude'.");
   }
 
-  const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+  const model = modelOverride || process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -48,13 +48,13 @@ async function claudeChat(systemPrompt: string, userPrompt: string): Promise<str
   return textBlock?.text || "";
 }
 
-async function openaiChat(systemPrompt: string, userPrompt: string): Promise<string> {
+async function openaiChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
   }
 
-  const model = process.env.OPENAI_MODEL || "gpt-4o";
+  const model = modelOverride || process.env.OPENAI_MODEL || "gpt-4o";
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -85,15 +85,16 @@ async function openaiChat(systemPrompt: string, userPrompt: string): Promise<str
 
 export async function chatCompletion(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  modelOverride?: string
 ): Promise<string> {
   const provider = getProvider();
 
   switch (provider) {
     case "claude":
-      return claudeChat(systemPrompt, userPrompt);
+      return claudeChat(systemPrompt, userPrompt, modelOverride);
     case "openai":
-      return openaiChat(systemPrompt, userPrompt);
+      return openaiChat(systemPrompt, userPrompt, modelOverride);
   }
 }
 
