@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
+  Background,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -18,63 +19,83 @@ import { useApp } from "./AppProvider";
 
 // -- Constants ----------------------------------------------------------------
 
-const NODE_SIZE = 120;
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 44;
 
-const TYPE_BORDER: Record<string, string> = {
-  article: "border-blue-400/60 dark:border-blue-500/50",
-  tweet: "border-sky-400/60 dark:border-sky-500/50",
-  video: "border-red-400/60 dark:border-red-500/50",
-  repo: "border-green-400/60 dark:border-green-500/50",
-  podcast: "border-purple-400/60 dark:border-purple-500/50",
-  other: "border-[var(--border-color)]",
+const TYPE_ACCENT: Record<string, string> = {
+  article: "#3b82f6",
+  tweet: "#0ea5e9",
+  video: "#ef4444",
+  repo: "#22c55e",
+  podcast: "#a855f7",
+  other: "#737373",
 };
 
 // -- Dagre layout helper ------------------------------------------------------
 
-function getLayoutedElements(nodes: Node[], edges: Edge[]) {
+const MIN_GAP_X = NODE_WIDTH + 40;  // minimum horizontal gap (node width + padding)
+const MIN_GAP_Y = NODE_HEIGHT + 40; // minimum vertical gap (node height + padding)
+
+function getLayoutedElements(
+  nodes: Node[],
+  edges: Edge[],
+  savedPositions: Map<string, { x: number; y: number }>
+) {
   const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: "TB",
-    nodesep: 60,
-    ranksep: 80,
-    marginx: 40,
-    marginy: 40,
+    nodesep: 120,
+    ranksep: 120,
+    marginx: 60,
+    marginy: 60,
   });
 
   for (const node of nodes) {
-    g.setNode(node.id, { width: NODE_SIZE, height: NODE_SIZE });
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
+
   for (const edge of edges) {
     g.setEdge(edge.source, edge.target);
   }
 
   Dagre.layout(g);
 
-  // Collect positions from dagre
   const positions = nodes.map((node) => {
-    const dn = g.node(node.id);
-    return { id: node.id, x: dn.x - NODE_SIZE / 2, y: dn.y - NODE_SIZE / 2 };
+    const saved = savedPositions.get(node.id);
+    const dagreNode = g.node(node.id);
+    return {
+      id: node.id,
+      x: saved ? saved.x : dagreNode.x - NODE_WIDTH / 2,
+      y: saved ? saved.y : dagreNode.y - NODE_HEIGHT / 2,
+      fromSaved: !!saved,
+    };
   });
 
-  // Post-layout: push apart any nodes that are too close
-  const minGap = NODE_SIZE + 30;
-  for (let pass = 0; pass < 4; pass++) {
+  // Push apart any nodes that are too close (only adjust non-saved positions)
+  for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < positions.length; i++) {
       for (let j = i + 1; j < positions.length; j++) {
         const a = positions[i]!;
         const b = positions[j]!;
         const dx = Math.abs(a.x - b.x);
         const dy = Math.abs(a.y - b.y);
-        if (dx < minGap && dy < minGap) {
-          if (dx < minGap) {
-            const push = (minGap - dx) / 2 + 1;
-            a.x -= push;
-            b.x += push;
+
+        // Only fix if nodes overlap (both axes within min gap)
+        if (dx < MIN_GAP_X && dy < MIN_GAP_Y) {
+          // Push apart on whichever axis has more room
+          if (dx < MIN_GAP_X) {
+            const pushX = (MIN_GAP_X - dx) / 2 + 1;
+            if (!a.fromSaved) a.x -= pushX;
+            if (!b.fromSaved) b.x += pushX;
+            if (a.fromSaved) b.x += pushX * 2;
+            if (b.fromSaved) a.x -= pushX * 2;
           }
-          if (dy < minGap) {
-            const push = (minGap - dy) / 2 + 1;
-            a.y -= push;
-            b.y += push;
+          if (dy < MIN_GAP_Y) {
+            const pushY = (MIN_GAP_Y - dy) / 2 + 1;
+            if (!a.fromSaved) a.y -= pushY;
+            if (!b.fromSaved) b.y += pushY;
+            if (a.fromSaved) b.y += pushY * 2;
+            if (b.fromSaved) a.y -= pushY * 2;
           }
         }
       }
@@ -90,38 +111,43 @@ function getLayoutedElements(nodes: Node[], edges: Edge[]) {
   return { nodes: layoutedNodes, edges };
 }
 
-// -- Custom circle node -------------------------------------------------------
+// -- Custom node component ----------------------------------------------------
 
-function CircleNode({ data, selected }: NodeProps) {
-  const borderClass = TYPE_BORDER[data.type as string] || TYPE_BORDER.other;
-  const label = data.label as string;
-
-  // Truncate to ~20 chars for circle fit
-  const display = label.length > 22 ? label.slice(0, 20) + "\u2026" : label;
+function ResourceNode({ data, selected }: NodeProps) {
+  const accent = TYPE_ACCENT[data.type as string] || TYPE_ACCENT.other;
+  const label =
+    typeof data.label === "string" && data.label.length > 34
+      ? data.label.slice(0, 33) + "\u2026"
+      : (data.label as string);
 
   return (
     <>
       <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
       <div
         className={`
-          flex items-center justify-center rounded-full border-2 cursor-pointer
-          bg-[var(--bg-surface)] transition-all duration-150
-          ${borderClass}
+          flex items-center rounded-[10px] border overflow-hidden
+          bg-[var(--bg-surface)] text-[var(--fg-secondary)]
+          transition-shadow transition-colors duration-150
           ${selected
-            ? "shadow-lg border-[var(--fg-muted)] scale-105"
-            : "hover:shadow-md hover:scale-[1.03]"
+            ? "border-[var(--fg-muted)] shadow-lg"
+            : "border-[var(--border-color)] hover:border-[var(--fg-muted)] hover:shadow-md"
           }
         `}
-        style={{ width: NODE_SIZE, height: NODE_SIZE }}
+        style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
       >
+        {/* Accent bar */}
+        <div
+          className="w-1 self-stretch shrink-0"
+          style={{ backgroundColor: accent }}
+        />
+        {/* Label */}
         <span
           className={`
-            text-[12px] leading-tight font-medium text-center px-3 select-none
+            px-3 text-[13px] font-semibold truncate
             ${selected ? "text-[var(--fg)]" : "text-[var(--fg-secondary)]"}
           `}
-          style={{ maxWidth: NODE_SIZE - 20, wordBreak: "break-word" }}
         >
-          {display}
+          {label}
         </span>
       </div>
       <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0" />
@@ -129,40 +155,49 @@ function CircleNode({ data, selected }: NodeProps) {
   );
 }
 
-const nodeTypes = { resource: CircleNode };
+const nodeTypes = { resource: ResourceNode };
 
 // -- Inner graph (needs ReactFlowProvider above) ------------------------------
 
 function GraphInner() {
   const { graphData, selectResource, clearSelection, selectedResource } = useApp();
   const { fitView } = useReactFlow();
+  const initializedRef = useRef(false);
   const prevNodeCountRef = useRef(0);
 
   // Convert app data to React Flow format
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const rfNodes: Node[] = graphData.nodes.map((n) => ({
-      id: n.id,
-      type: "resource",
-      position: { x: 0, y: 0 },
-      data: { label: n.name, type: n.type },
-      selected: selectedResource?.id === n.id,
-      draggable: false,
-      connectable: false,
-    }));
+  const { initialNodes, initialEdges, savedPositions } = useMemo(() => {
+    const saved = new Map<string, { x: number; y: number }>();
+    const rfNodes: Node[] = graphData.nodes.map((n) => {
+      if (n.x != null && n.y != null) {
+        saved.set(n.id, { x: n.x, y: n.y });
+      }
+      return {
+        id: n.id,
+        type: "resource",
+        position: { x: 0, y: 0 },
+        data: {
+          label: n.name,
+          type: n.type,
+          source: n.source,
+        },
+        selected: selectedResource?.id === n.id,
+      };
+    });
     const rfEdges: Edge[] = graphData.links.map((l, i) => ({
       id: `e-${i}-${l.source}-${l.target}`,
       source: l.source,
       target: l.target,
-      type: "straight",
-      style: { stroke: "var(--graph-link)", strokeWidth: 1.2 },
+      type: "smoothstep",
+      style: { stroke: "var(--graph-link)", strokeWidth: 1 },
     }));
-    return { initialNodes: rfNodes, initialEdges: rfEdges };
+    return { initialNodes: rfNodes, initialEdges: rfEdges, savedPositions: saved };
   }, [graphData, selectedResource?.id]);
 
   // Apply dagre layout
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
-    () => getLayoutedElements(initialNodes, initialEdges),
-    [initialNodes, initialEdges]
+    () => getLayoutedElements(initialNodes, initialEdges, savedPositions),
+    [initialNodes, initialEdges, savedPositions]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
@@ -173,8 +208,15 @@ function GraphInner() {
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
 
-    if (layoutedNodes.length > 0) {
-      setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 100);
+    // Fit view on first load only
+    if (!initializedRef.current && layoutedNodes.length > 0) {
+      initializedRef.current = true;
+      setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
+    }
+
+    // Fit view when nodes are added (not on delete/archive)
+    if (layoutedNodes.length > prevNodeCountRef.current && prevNodeCountRef.current > 0) {
+      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
     }
     prevNodeCountRef.current = layoutedNodes.length;
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
@@ -190,6 +232,24 @@ function GraphInner() {
     clearSelection();
   }, [clearSelection]);
 
+  // Save position when user drags a node
+  const onNodeDragStop = useCallback(
+    async (_: React.MouseEvent, node: Node) => {
+      try {
+        await fetch("/api/graph", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            positions: [{ nodeId: node.id, x: Math.round(node.position.x), y: Math.round(node.position.y) }],
+          }),
+        });
+      } catch {
+        // silently fail
+      }
+    },
+    []
+  );
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -199,16 +259,16 @@ function GraphInner() {
       nodeTypes={nodeTypes}
       onNodeClick={onNodeClick}
       onPaneClick={onPaneClick}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable={false}
+      onNodeDragStop={onNodeDragStop}
       fitView
-      fitViewOptions={{ padding: 0.15 }}
-      minZoom={0.2}
-      maxZoom={3}
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.1}
+      maxZoom={4}
       proOptions={{ hideAttribution: true }}
       className="!bg-[var(--bg-page)]"
-    />
+    >
+      <Background color="var(--border-subtle)" gap={32} size={1} />
+    </ReactFlow>
   );
 }
 
