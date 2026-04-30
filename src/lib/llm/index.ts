@@ -69,7 +69,7 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
         { role: "user", content: userPrompt },
       ],
       temperature: 0.2,
-      max_tokens: 1024,
+      max_completion_tokens: 1024,
       response_format: { type: "json_object" },
     }),
   });

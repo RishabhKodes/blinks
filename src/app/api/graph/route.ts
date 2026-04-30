@@ -34,14 +34,42 @@ export async function GET() {
 
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
-  for (const rl of allResourceLinks) {
-    // Only include edges where both resources are active (non-archived)
-    if (!resourceIdSet.has(rl.sourceResourceId) || !resourceIdSet.has(rl.targetResourceId)) continue;
-    // Deduplicate (edges stored as one direction)
-    const key = [rl.sourceResourceId, rl.targetResourceId].sort().join("->");
-    if (!linkSet.has(key)) {
-      linkSet.add(key);
-      links.push({ source: rl.sourceResourceId, target: rl.targetResourceId });
+
+  if (allResourceLinks.length > 0) {
+    // Use explicit LLM-judged connections
+    for (const rl of allResourceLinks) {
+      if (!resourceIdSet.has(rl.sourceResourceId) || !resourceIdSet.has(rl.targetResourceId)) continue;
+      const key = [rl.sourceResourceId, rl.targetResourceId].sort().join("->");
+      if (!linkSet.has(key)) {
+        linkSet.add(key);
+        links.push({ source: rl.sourceResourceId, target: rl.targetResourceId });
+      }
+    }
+  } else if (allResources.length > 1) {
+    // Fallback for pre-existing resources: connect via shared topics
+    const topicToResources = new Map<string, string[]>();
+    for (const rt of allResourceTopics) {
+      if (!resourceIdSet.has(rt.resourceId)) continue;
+      const arr = topicToResources.get(rt.topicId) || [];
+      arr.push(rt.resourceId);
+      topicToResources.set(rt.topicId, arr);
+    }
+    // Count shared topics per pair
+    const pairWeight = new Map<string, number>();
+    for (const ids of topicToResources.values()) {
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const key = [ids[i], ids[j]].sort().join("->");
+          pairWeight.set(key, (pairWeight.get(key) || 0) + 1);
+        }
+      }
+    }
+    for (const [key, weight] of pairWeight) {
+      if (weight >= 2 && !linkSet.has(key)) {
+        linkSet.add(key);
+        const [a, b] = key.split("->");
+        links.push({ source: a!, target: b! });
+      }
     }
   }
 
