@@ -1,247 +1,231 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import {
-  ReactFlow,
-  Background,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  ReactFlowProvider,
-  type Node,
-  type Edge,
-  type NodeProps,
-  Handle,
-  Position,
-} from "@xyflow/react";
-import Dagre from "@dagrejs/dagre";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ForceGraph2D, {
+  type ForceGraphMethods,
+  type LinkObject,
+  type NodeObject,
+} from "react-force-graph-2d";
 import { useApp } from "./AppProvider";
 
-// -- Constants ----------------------------------------------------------------
-
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 44;
+const LEGACY_NODE_X_OFFSET = 130;
+const LEGACY_NODE_Y_OFFSET = 22;
 
 const TYPE_ACCENT: Record<string, string> = {
-  article: "#3b82f6",
-  tweet: "#0ea5e9",
-  video: "#ef4444",
-  repo: "#22c55e",
-  podcast: "#a855f7",
-  other: "#737373",
+  article: "#6e7f99",
+  tweet: "#4e7f95",
+  video: "#927070",
+  repo: "#5d8769",
+  podcast: "#7a6e95",
+  other: "#7a7a7a",
 };
 
-// -- Dagre layout helper ------------------------------------------------------
+interface CanvasNode {
+  id: string;
+  label: string;
+  type: string;
+  source: string;
+  radius: number;
+  lines: string[];
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number;
+  fy?: number;
+}
 
-const MIN_GAP_X = NODE_WIDTH + 40;  // minimum horizontal gap (node width + padding)
-const MIN_GAP_Y = NODE_HEIGHT + 40; // minimum vertical gap (node height + padding)
+interface CanvasLink {
+  source: string | CanvasNode;
+  target: string | CanvasNode;
+}
 
-function getLayoutedElements(
-  nodes: Node[],
-  edges: Edge[],
-  savedPositions: Map<string, { x: number; y: number }>
-) {
-  const g = new Dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-  g.setGraph({
-    rankdir: "TB",
-    nodesep: 120,
-    ranksep: 120,
-    marginx: 60,
-    marginy: 60,
-  });
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
-  for (const node of nodes) {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+function radiusForLabel(label: string) {
+  const base = 24 + Math.sqrt(Math.max(label.trim().length, 1)) * 3.2;
+  return clamp(base, 24, 54);
+}
+
+function toDisplayLines(text: string, maxChars = 16, maxLines = 2) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return ["Untitled"];
+
+  const words = clean.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  let consumed = 0;
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    const overflowed = candidate.length > maxChars;
+
+    if (!overflowed) {
+      current = candidate;
+      consumed += word.length + 1;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+
+    if (lines.length === maxLines - 1) break;
+
+    if (word.length > maxChars) {
+      lines.push(`${word.slice(0, maxChars - 1)}\u2026`);
+      consumed += word.length;
+      continue;
+    }
+
+    current = word;
+    consumed += word.length + 1;
   }
 
-  for (const edge of edges) {
-    g.setEdge(edge.source, edge.target);
+  if (lines.length < maxLines && current) {
+    lines.push(current);
   }
 
-  Dagre.layout(g);
+  if (lines.length === 0) {
+    lines.push(clean.slice(0, maxChars));
+  }
 
-  const positions = nodes.map((node) => {
-    const saved = savedPositions.get(node.id);
-    const dagreNode = g.node(node.id);
-    return {
-      id: node.id,
-      x: saved ? saved.x : dagreNode.x - NODE_WIDTH / 2,
-      y: saved ? saved.y : dagreNode.y - NODE_HEIGHT / 2,
-      fromSaved: !!saved,
-    };
-  });
-
-  // Push apart any nodes that are too close (only adjust non-saved positions)
-  for (let pass = 0; pass < 3; pass++) {
-    for (let i = 0; i < positions.length; i++) {
-      for (let j = i + 1; j < positions.length; j++) {
-        const a = positions[i]!;
-        const b = positions[j]!;
-        const dx = Math.abs(a.x - b.x);
-        const dy = Math.abs(a.y - b.y);
-
-        // Only fix if nodes overlap (both axes within min gap)
-        if (dx < MIN_GAP_X && dy < MIN_GAP_Y) {
-          // Push apart on whichever axis has more room
-          if (dx < MIN_GAP_X) {
-            const pushX = (MIN_GAP_X - dx) / 2 + 1;
-            if (!a.fromSaved) a.x -= pushX;
-            if (!b.fromSaved) b.x += pushX;
-            if (a.fromSaved) b.x += pushX * 2;
-            if (b.fromSaved) a.x -= pushX * 2;
-          }
-          if (dy < MIN_GAP_Y) {
-            const pushY = (MIN_GAP_Y - dy) / 2 + 1;
-            if (!a.fromSaved) a.y -= pushY;
-            if (!b.fromSaved) b.y += pushY;
-            if (a.fromSaved) b.y += pushY * 2;
-            if (b.fromSaved) a.y -= pushY * 2;
-          }
-        }
-      }
+  const unresolved = consumed < clean.length;
+  if (unresolved) {
+    const lastIndex = lines.length - 1;
+    const last = lines[lastIndex];
+    if (last) {
+      lines[lastIndex] = last.endsWith("\u2026")
+        ? last
+        : `${last.slice(0, maxChars - 1)}\u2026`;
     }
   }
 
-  const posMap = new Map(positions.map((p) => [p.id, { x: p.x, y: p.y }]));
-  const layoutedNodes = nodes.map((node) => ({
-    ...node,
-    position: posMap.get(node.id)!,
-  }));
-
-  return { nodes: layoutedNodes, edges };
+  return lines.slice(0, maxLines);
 }
 
-// -- Custom node component ----------------------------------------------------
-
-function ResourceNode({ data, selected }: NodeProps) {
-  const accent = TYPE_ACCENT[data.type as string] || TYPE_ACCENT.other;
-  const label =
-    typeof data.label === "string" && data.label.length > 34
-      ? data.label.slice(0, 33) + "\u2026"
-      : (data.label as string);
-
-  return (
-    <>
-      <Handle type="target" position={Position.Top} className="!opacity-0 !w-0 !h-0" />
-      <div
-        className={`
-          flex items-center rounded-[10px] border overflow-hidden
-          bg-[var(--bg-surface)] text-[var(--fg-secondary)]
-          transition-shadow transition-colors duration-150
-          ${selected
-            ? "border-[var(--fg-muted)] shadow-lg"
-            : "border-[var(--border-color)] hover:border-[var(--fg-muted)] hover:shadow-md"
-          }
-        `}
-        style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
-      >
-        {/* Accent bar */}
-        <div
-          className="w-1 self-stretch shrink-0"
-          style={{ backgroundColor: accent }}
-        />
-        {/* Label */}
-        <span
-          className={`
-            px-3 text-[13px] font-semibold truncate
-            ${selected ? "text-[var(--fg)]" : "text-[var(--fg-secondary)]"}
-          `}
-        >
-          {label}
-        </span>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!opacity-0 !w-0 !h-0" />
-    </>
-  );
-}
-
-const nodeTypes = { resource: ResourceNode };
-
-// -- Inner graph (needs ReactFlowProvider above) ------------------------------
-
-function GraphInner() {
-  const { graphData, selectResource, clearSelection, selectedResource } = useApp();
-  const { fitView } = useReactFlow();
+function GraphCanvas() {
+  const { graphData, selectResource, clearSelection, selectedResource, theme } = useApp();
+  const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const initializedRef = useRef(false);
   const prevNodeCountRef = useRef(0);
+  const shouldPersistAutoLayoutRef = useRef(false);
+  const graphNodesRef = useRef<CanvasNode[]>([]);
 
-  // Convert app data to React Flow format
-  const { initialNodes, initialEdges, savedPositions } = useMemo(() => {
-    const saved = new Map<string, { x: number; y: number }>();
-    const rfNodes: Node[] = graphData.nodes.map((n) => {
-      if (n.x != null && n.y != null) {
-        saved.set(n.id, { x: n.x, y: n.y });
-      }
+  const selectedNodeId = selectedResource?.id ?? null;
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const syncSize = () => {
+      setViewport({
+        width: Math.max(1, Math.floor(element.clientWidth)),
+        height: Math.max(1, Math.floor(element.clientHeight)),
+      });
+    };
+
+    syncSize();
+
+    const observer = new ResizeObserver(syncSize);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const graphCanvasData = useMemo(() => {
+    const count = Math.max(1, graphData.nodes.length);
+
+    const nodes: CanvasNode[] = graphData.nodes.map((node, index) => {
+      const angle = (index / count) * Math.PI * 2;
+      const ring = 170 + Math.floor(index / 12) * 150;
+      const seededX = Math.cos(angle) * ring;
+      const seededY = Math.sin(angle) * ring;
+      const hasSaved = node.x != null && node.y != null;
+
+      const x = hasSaved ? node.x! + LEGACY_NODE_X_OFFSET : seededX;
+      const y = hasSaved ? node.y! + LEGACY_NODE_Y_OFFSET : seededY;
+
       return {
-        id: n.id,
-        type: "resource",
-        position: { x: 0, y: 0 },
-        data: {
-          label: n.name,
-          type: n.type,
-          source: n.source,
-        },
-        selected: selectedResource?.id === n.id,
+        id: node.id,
+        label: node.name,
+        type: node.type,
+        source: node.source,
+        radius: radiusForLabel(node.name),
+        lines: toDisplayLines(node.name),
+        x,
+        y,
+        ...(hasSaved ? { fx: x, fy: y } : {}),
       };
     });
-    const rfEdges: Edge[] = graphData.links.map((l, i) => ({
-      id: `e-${i}-${l.source}-${l.target}`,
-      source: l.source,
-      target: l.target,
-      type: "smoothstep",
-      style: { stroke: "var(--graph-link)", strokeWidth: 1 },
+
+    const links: CanvasLink[] = graphData.links.map((link) => ({
+      source: link.source,
+      target: link.target,
     }));
-    return { initialNodes: rfNodes, initialEdges: rfEdges, savedPositions: saved };
-  }, [graphData, selectedResource?.id]);
 
-  // Apply dagre layout
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
-    () => getLayoutedElements(initialNodes, initialEdges, savedPositions),
-    [initialNodes, initialEdges, savedPositions]
+    return { nodes, links };
+  }, [graphData]);
+
+  const hasUnpositionedNodes = useMemo(
+    () => graphData.nodes.some((node) => node.x == null || node.y == null),
+    [graphData.nodes]
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
-
-  // Sync when graph data changes
   useEffect(() => {
-    setNodes(layoutedNodes);
-    setEdges(layoutedEdges);
+    graphNodesRef.current = graphCanvasData.nodes;
+  }, [graphCanvasData.nodes]);
 
-    // Fit view on first load only
-    if (!initializedRef.current && layoutedNodes.length > 0) {
-      initializedRef.current = true;
-      setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 100);
-    }
-
-    // Fit view when nodes are added (not on delete/archive)
-    if (layoutedNodes.length > prevNodeCountRef.current && prevNodeCountRef.current > 0) {
-      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
-    }
-    prevNodeCountRef.current = layoutedNodes.length;
-  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, fitView]);
-
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      selectResource(node.id);
-    },
-    [selectResource]
+  const palette = useMemo(
+    () =>
+      theme === "dark"
+        ? {
+            nodeFill: "#23262b",
+            nodeStroke: "#8a9099",
+            nodeText: "#dfe4ed",
+            selectedFill: "#eceff6",
+            selectedStroke: "#f5f7fb",
+            selectedText: "#1b1e24",
+            selectedGlow: "rgba(236, 239, 246, 0.25)",
+            link: "rgba(145, 151, 162, 0.38)",
+            linkSelected: "rgba(226, 231, 241, 0.65)",
+          }
+        : {
+            nodeFill: "#f4f5f6",
+            nodeStroke: "#595d63",
+            nodeText: "#2a2d31",
+            selectedFill: "#14181f",
+            selectedStroke: "#2b3240",
+            selectedText: "#f6f8fc",
+            selectedGlow: "rgba(20, 24, 31, 0.18)",
+            link: "rgba(72, 77, 84, 0.35)",
+            linkSelected: "rgba(34, 40, 48, 0.62)",
+          },
+    [theme]
   );
 
-  const onPaneClick = useCallback(() => {
-    clearSelection();
-  }, [clearSelection]);
+  const saveNodePositions = useCallback(
+    async (positions: Array<{ nodeId: string; x: number; y: number }>) => {
+      const payload = positions
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+        .map((p) => ({
+          nodeId: p.nodeId,
+          x: Math.round(p.x - LEGACY_NODE_X_OFFSET),
+          y: Math.round(p.y - LEGACY_NODE_Y_OFFSET),
+        }));
 
-  // Save position when user drags a node
-  const onNodeDragStop = useCallback(
-    async (_: React.MouseEvent, node: Node) => {
+      if (payload.length === 0) return;
+
       try {
         await fetch("/api/graph", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            positions: [{ nodeId: node.id, x: Math.round(node.position.x), y: Math.round(node.position.y) }],
-          }),
+          body: JSON.stringify({ positions: payload }),
         });
       } catch {
         // silently fail
@@ -250,29 +234,226 @@ function GraphInner() {
     []
   );
 
+  useEffect(() => {
+    shouldPersistAutoLayoutRef.current = hasUnpositionedNodes;
+  }, [hasUnpositionedNodes]);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph) return;
+
+    const linkForce = graph.d3Force("link") as {
+      distance?: (distance: number | ((link: LinkObject) => number)) => unknown;
+      strength?: (strength: number) => unknown;
+    } | undefined;
+
+    linkForce?.distance?.((link: LinkObject) => {
+      const source = (typeof link.source === "object" ? link.source : null) as CanvasNode | null;
+      const target = (typeof link.target === "object" ? link.target : null) as CanvasNode | null;
+      const a = source?.radius ?? 30;
+      const b = target?.radius ?? 30;
+      return a + b + 90;
+    });
+    linkForce?.strength?.(0.15);
+
+    const chargeForce = graph.d3Force("charge") as {
+      strength?: (strength: number | ((node: NodeObject) => number)) => unknown;
+    } | undefined;
+
+    chargeForce?.strength?.((node: NodeObject) => {
+      const radius = ((node as CanvasNode).radius ?? 30) + 1;
+      return -Math.max(220, radius * 16);
+    });
+
+    graph.d3ReheatSimulation();
+  }, [graphCanvasData]);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    const nodeCount = graphCanvasData.nodes.length;
+
+    if (!graph || nodeCount === 0) {
+      prevNodeCountRef.current = nodeCount;
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      if (!initializedRef.current) {
+        graph.zoomToFit(500, 85);
+        initializedRef.current = true;
+      } else if (nodeCount > prevNodeCountRef.current) {
+        graph.zoomToFit(350, 90);
+      }
+      prevNodeCountRef.current = nodeCount;
+    }, 110);
+
+    return () => window.clearTimeout(handle);
+  }, [graphCanvasData.nodes.length]);
+
+  const onNodeClick = useCallback(
+    (node: NodeObject) => {
+      const data = node as CanvasNode;
+      selectResource(data.id);
+      if (data.x != null && data.y != null) {
+        graphRef.current?.centerAt(data.x, data.y, 260);
+      }
+    },
+    [selectResource]
+  );
+
+  const onNodeDragEnd = useCallback(
+    (node: NodeObject) => {
+      const data = node as CanvasNode;
+      if (data.x == null || data.y == null) return;
+
+      data.fx = data.x;
+      data.fy = data.y;
+
+      void saveNodePositions([{ nodeId: data.id, x: data.x, y: data.y }]);
+    },
+    [saveNodePositions]
+  );
+
+  const onEngineStop = useCallback(() => {
+    const nodes = graphNodesRef.current;
+
+    if (!shouldPersistAutoLayoutRef.current) return;
+
+    shouldPersistAutoLayoutRef.current = false;
+
+    const currentPositions = nodes
+      .filter((node) => node.x != null && node.y != null)
+      .map((node) => ({
+        nodeId: node.id,
+        x: node.x as number,
+        y: node.y as number,
+      }));
+
+    void saveNodePositions(currentPositions);
+  }, [saveNodePositions]);
+
+  const nodeCanvasObject = useCallback(
+    (node: NodeObject, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const data = node as CanvasNode;
+      const x = data.x ?? 0;
+      const y = data.y ?? 0;
+      const selected = selectedNodeId === data.id;
+
+      const accent = TYPE_ACCENT[data.type] || TYPE_ACCENT.other;
+      const radius = data.radius;
+      const strokeWidth = selected ? 2.3 : 1.4;
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
+      ctx.fillStyle = selected ? palette.selectedFill : palette.nodeFill;
+      ctx.shadowColor = selected ? palette.selectedGlow : "transparent";
+      ctx.shadowBlur = selected ? 18 : 0;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.lineWidth = strokeWidth / globalScale;
+      ctx.strokeStyle = selected ? palette.selectedStroke : palette.nodeStroke;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius - 1, -Math.PI / 2, Math.PI / 2, false);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = (selected ? 2 : 1.2) / globalScale;
+      ctx.stroke();
+
+      const fontSize = Math.max(9, 12 / globalScale);
+      const lineHeight = fontSize * 1.22;
+      const lines = data.lines;
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = selected ? palette.selectedText : palette.nodeText;
+      ctx.font = `${fontSize}px "Comic Sans MS", "Chalkboard SE", "Segoe Print", sans-serif`;
+
+      const startY = y - ((lines.length - 1) * lineHeight) / 2;
+      lines.forEach((line, index) => {
+        ctx.fillText(line, x, startY + index * lineHeight);
+      });
+    },
+    [palette, selectedNodeId]
+  );
+
+  const nodePointerAreaPaint = useCallback(
+    (node: NodeObject, color: string, ctx: CanvasRenderingContext2D) => {
+      const data = node as CanvasNode;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(data.x ?? 0, data.y ?? 0, data.radius + 6, 0, 2 * Math.PI, false);
+      ctx.fill();
+    },
+    []
+  );
+
+  const linkColor = useCallback(
+    (link: LinkObject) => {
+      if (!selectedNodeId) return palette.link;
+      const source = (typeof link.source === "object" ? link.source : null) as CanvasNode | null;
+      const target = (typeof link.target === "object" ? link.target : null) as CanvasNode | null;
+      const connected = source?.id === selectedNodeId || target?.id === selectedNodeId;
+      return connected ? palette.linkSelected : palette.link;
+    },
+    [palette, selectedNodeId]
+  );
+
+  const linkWidth = useCallback(
+    (link: LinkObject) => {
+      if (!selectedNodeId) return 1;
+      const source = (typeof link.source === "object" ? link.source : null) as CanvasNode | null;
+      const target = (typeof link.target === "object" ? link.target : null) as CanvasNode | null;
+      const connected = source?.id === selectedNodeId || target?.id === selectedNodeId;
+      return connected ? 1.8 : 1;
+    },
+    [selectedNodeId]
+  );
+
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      nodeTypes={nodeTypes}
-      onNodeClick={onNodeClick}
-      onPaneClick={onPaneClick}
-      onNodeDragStop={onNodeDragStop}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-      minZoom={0.1}
-      maxZoom={4}
-      proOptions={{ hideAttribution: true }}
-      className="!bg-[var(--bg-page)]"
-    >
-      <Background color="var(--border-subtle)" gap={32} size={1} />
-    </ReactFlow>
+    <div className="h-screen w-full p-3 pt-16 md:p-6 md:pt-20">
+      <div
+        ref={containerRef}
+        className="relative h-full w-full overflow-hidden rounded-2xl border border-edge bg-page"
+      >
+        {viewport.width > 0 && viewport.height > 0 && (
+          <ForceGraph2D
+            ref={graphRef}
+            graphData={graphCanvasData}
+            width={viewport.width}
+            height={viewport.height}
+            backgroundColor="transparent"
+            nodeLabel={(node: NodeObject) => (node as CanvasNode).label}
+            nodeVal={(node: NodeObject) => {
+              const radius = (node as CanvasNode).radius;
+              return (radius * radius) / 70;
+            }}
+            nodeCanvasObject={nodeCanvasObject}
+            nodePointerAreaPaint={nodePointerAreaPaint}
+            linkColor={linkColor}
+            linkWidth={linkWidth}
+            minZoom={0.2}
+            maxZoom={3.5}
+            warmupTicks={80}
+            cooldownTicks={200}
+            d3AlphaDecay={0.085}
+            d3VelocityDecay={0.54}
+            showPointerCursor={(obj) => Boolean(obj && "id" in obj)}
+            onNodeClick={onNodeClick}
+            onNodeDragEnd={onNodeDragEnd}
+            onBackgroundClick={clearSelection}
+            onEngineStop={onEngineStop}
+          />
+        )}
+
+        <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-edge-subtle bg-surface/80 px-2.5 py-1.5 text-[11px] text-ink-faint backdrop-blur-sm">
+          Drag nodes to pin. Drag canvas to pan. Scroll to zoom.
+        </div>
+      </div>
+    </div>
   );
 }
-
-// -- Exported component -------------------------------------------------------
 
 export function Graph() {
   const { graphData } = useApp();
@@ -304,11 +485,5 @@ export function Graph() {
     );
   }
 
-  return (
-    <div className="w-full h-screen">
-      <ReactFlowProvider>
-        <GraphInner />
-      </ReactFlowProvider>
-    </div>
-  );
+  return <GraphCanvas />;
 }
