@@ -28,25 +28,12 @@ export async function GET() {
     topicsByResource.set(rt.resourceId, arr);
   }
 
-  // Build edges from LLM-judged resource_links
+  // Build edges from shared topics (resources sharing 2+ topics get connected)
   const resourceIdSet = new Set(allResources.map((r) => r.id));
-  const allResourceLinks = db.select().from(schema.resourceLinks).all();
-
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
 
-  if (allResourceLinks.length > 0) {
-    // Use explicit LLM-judged connections
-    for (const rl of allResourceLinks) {
-      if (!resourceIdSet.has(rl.sourceResourceId) || !resourceIdSet.has(rl.targetResourceId)) continue;
-      const key = [rl.sourceResourceId, rl.targetResourceId].sort().join("->");
-      if (!linkSet.has(key)) {
-        linkSet.add(key);
-        links.push({ source: rl.sourceResourceId, target: rl.targetResourceId });
-      }
-    }
-  } else if (allResources.length > 1) {
-    // Fallback for pre-existing resources: connect via shared topics
+  if (allResources.length > 1) {
     const topicToResources = new Map<string, string[]>();
     for (const rt of allResourceTopics) {
       if (!resourceIdSet.has(rt.resourceId)) continue;
@@ -54,7 +41,6 @@ export async function GET() {
       arr.push(rt.resourceId);
       topicToResources.set(rt.topicId, arr);
     }
-    // Count shared topics per pair
     const pairWeight = new Map<string, number>();
     for (const ids of topicToResources.values()) {
       for (let i = 0; i < ids.length; i++) {

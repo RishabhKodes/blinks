@@ -68,7 +68,6 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.2,
       max_completion_tokens: 1024,
       response_format: { type: "json_object" },
     }),

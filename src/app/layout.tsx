@@ -49,7 +49,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-page text-ink">{children}</body>
+      <body className="min-h-full flex flex-col bg-page text-ink" suppressHydrationWarning>{children}</body>
     </html>
   );
 }
