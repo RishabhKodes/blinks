@@ -28,6 +28,7 @@ interface CanvasNode {
   source: string;
   radius: number;
   lines: string[];
+  pinned?: boolean;
   x?: number;
   y?: number;
   vx?: number;
@@ -114,6 +115,87 @@ function toDisplayLines(text: string, maxChars = 16, maxLines = 2) {
   return lines.slice(0, maxLines);
 }
 
+function applyPinnedPosition(node: CanvasNode) {
+  if (node.pinned && node.x != null && node.y != null) {
+    node.fx = node.x;
+    node.fy = node.y;
+    return;
+  }
+  node.fx = undefined;
+  node.fy = undefined;
+}
+
+function separateNodeOverlaps(
+  nodes: CanvasNode[],
+  padding = 12,
+  passes = 8
+): boolean {
+  if (nodes.length < 2) return false;
+
+  let movedAny = false;
+
+  for (let pass = 0; pass < passes; pass++) {
+    let movedThisPass = false;
+
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i]!;
+      if (a.x == null || a.y == null) continue;
+
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j]!;
+        if (b.x == null || b.y == null) continue;
+
+        const minDist = a.radius + b.radius + padding;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.hypot(dx, dy);
+
+        if (dist < 0.0001) {
+          // Deterministic tiny vector when nodes share exact coordinates.
+          const angle = (i * 37 + j * 53 + pass * 11) * 0.157;
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          dist = 1;
+        }
+
+        if (dist >= minDist) continue;
+
+        const overlap = minDist - dist;
+        const ux = dx / dist;
+        const uy = dy / dist;
+
+        let aShare = 0.5;
+        let bShare = 0.5;
+        if (a.pinned && !b.pinned) {
+          aShare = 0.1;
+          bShare = 0.9;
+        } else if (!a.pinned && b.pinned) {
+          aShare = 0.9;
+          bShare = 0.1;
+        }
+
+        a.x -= ux * overlap * aShare;
+        a.y -= uy * overlap * aShare;
+        b.x += ux * overlap * bShare;
+        b.y += uy * overlap * bShare;
+
+        movedThisPass = true;
+        movedAny = true;
+      }
+    }
+
+    if (!movedThisPass) break;
+  }
+
+  if (movedAny) {
+    for (const node of nodes) {
+      applyPinnedPosition(node);
+    }
+  }
+
+  return movedAny;
+}
+
 function GraphCanvas() {
   const { graphData, selectResource, clearSelection, selectedResource, theme } = useApp();
   const graphRef = useRef<ForceGraphMethods | null>(null);
@@ -183,11 +265,17 @@ function GraphCanvas() {
         source: node.source,
         radius: radiusForLabel(node.name),
         lines: toDisplayLines(node.name),
+        pinned: hasSaved,
         x,
         y,
-        ...(hasSaved ? { fx: x, fy: y } : {}),
       };
     });
+
+    separateNodeOverlaps(nodes, 14, 10);
+
+    for (const node of nodes) {
+      applyPinnedPosition(node);
+    }
 
     const links: CanvasLink[] = graphData.links.map((link) => ({
       source: link.source,
@@ -367,13 +455,31 @@ function GraphCanvas() {
       const data = node as CanvasNode;
       if (data.x == null || data.y == null) return;
 
+      data.pinned = true;
       data.fx = data.x;
       data.fy = data.y;
+
+      const allNodes = graphNodesRef.current;
+      const moved = separateNodeOverlaps(allNodes, 14, 6);
+
+      if (moved) {
+        const correctedPositions = allNodes
+          .filter((n) => n.x != null && n.y != null)
+          .map((n) => ({ nodeId: n.id, x: n.x as number, y: n.y as number }));
+        void saveNodePositions(correctedPositions);
+        return;
+      }
 
       void saveNodePositions([{ nodeId: data.id, x: data.x, y: data.y }]);
     },
     [saveNodePositions]
   );
+
+  const onEngineTick = useCallback(() => {
+    const nodes = graphNodesRef.current;
+    if (nodes.length < 2) return;
+    separateNodeOverlaps(nodes, 10, 1);
+  }, []);
 
   const onEngineStop = useCallback(() => {
     const nodes = graphNodesRef.current;
@@ -519,6 +625,7 @@ function GraphCanvas() {
             onNodeClick={onNodeClick}
             onNodeDragEnd={onNodeDragEnd}
             onBackgroundClick={clearSelection}
+            onEngineTick={onEngineTick}
             onEngineStop={onEngineStop}
           />
         )}
