@@ -8,6 +8,7 @@ import { AddResourceModal } from "@/components/AddResourceModal";
 import { SearchPalette } from "@/components/SearchPalette";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ArchivedPanel } from "@/components/ArchivedPanel";
+import { ResourceListSlider } from "@/components/ResourceListSlider";
 import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
 
@@ -44,6 +45,7 @@ function AppContent() {
   return (
     <main className="flex-1 relative overflow-hidden">
       <Graph />
+      <ResourceListSlider />
       <SidePanel />
       <ChatPanel />
       <AddResourceModal open={modalOpen} onClose={closeModal} />
