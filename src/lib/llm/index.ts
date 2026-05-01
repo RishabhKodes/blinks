@@ -79,7 +79,38 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
+  const message = data.choices?.[0]?.message;
+
+  if (typeof message?.content === "string") {
+    return message.content;
+  }
+
+  if (Array.isArray(message?.content)) {
+    const parts = message.content
+      .map((part: unknown) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        const p = part as { type?: string; text?: string; refusal?: string };
+        if (typeof p.text === "string") return p.text;
+        if (typeof p.refusal === "string") return p.refusal;
+        return "";
+      })
+      .filter(Boolean);
+
+    if (parts.length > 0) {
+      return parts.join("\n");
+    }
+  }
+
+  if (typeof message?.refusal === "string") {
+    return message.refusal;
+  }
+
+  if (typeof data.output_text === "string") {
+    return data.output_text;
+  }
+
+  return "";
 }
 
 export async function chatCompletion(

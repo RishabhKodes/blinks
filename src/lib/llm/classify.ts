@@ -1,5 +1,6 @@
 import { chatCompletion } from "./index";
 import type { FetchedContent } from "../content/fetcher";
+import { z } from "zod";
 
 export interface GraphContext {
   existingTopics: string[];
@@ -14,6 +15,25 @@ export interface ClassificationResult {
   topics: string[];
   topicRelationships: [string, string][];
 }
+
+const ClassificationPayloadSchema = z.object({
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  keyConcepts: z.array(z.string()).optional(),
+  whyItMatters: z.string().optional(),
+  connections: z.array(z.string()).optional(),
+  topics: z.array(z.string()).optional(),
+  topicRelationships: z.array(z.tuple([z.string(), z.string()])).optional(),
+}).passthrough();
+
+const RelatedResourcesPayloadSchema = z.object({
+  related: z.array(
+    z.object({
+      index: z.number().int(),
+      reason: z.string().optional(),
+    })
+  ).optional(),
+}).passthrough();
 
 function buildSystemPrompt(context: GraphContext): string {
   const topicList = context.existingTopics.length > 0
@@ -64,6 +84,162 @@ function extractJsonFromResponse(raw: string): string {
     return raw.slice(braceStart, braceEnd + 1);
   }
   return raw.trim();
+}
+
+function repairTruncatedJson(input: string): string {
+  let text = input.trim();
+  if (!text) return text;
+
+  const firstBrace = text.indexOf("{");
+  if (firstBrace > 0) {
+    text = text.slice(firstBrace);
+  }
+
+  // Common truncation markers
+  text = text.replace(/\.\.\.\s*(?:\[truncated\]|truncated)?\s*$/i, "");
+
+  let out = "";
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    out += ch;
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      stack.push("}");
+      continue;
+    }
+    if (ch === "[") {
+      stack.push("]");
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      if (stack.length > 0 && stack[stack.length - 1] === ch) {
+        stack.pop();
+      }
+      continue;
+    }
+  }
+
+  // If we ended mid-string, close the quote.
+  if (inString) {
+    if (out.endsWith("\\")) {
+      out = out.slice(0, -1);
+    }
+    out += "\"";
+  }
+
+  // Remove dangling comma before auto-closing structures.
+  out = out.replace(/,\s*$/g, "");
+  while (stack.length > 0) {
+    out = out.replace(/,\s*$/g, "");
+    out += stack.pop();
+  }
+
+  return out;
+}
+
+function parseJsonFromRaw(raw: string): unknown | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const extracted = extractJsonFromResponse(raw);
+  const firstBrace = trimmed.indexOf("{");
+  const rawFromFirstBrace = firstBrace !== -1 ? trimmed.slice(firstBrace) : "";
+
+  const candidates = [extracted, trimmed, rawFromFirstBrace]
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const uniqueCandidates = candidates.filter((candidate) => {
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
+  });
+
+  if (uniqueCandidates.length === 0) {
+    return null;
+  }
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // try repaired variant below
+    }
+
+    const repaired = repairTruncatedJson(candidate);
+    if (repaired !== candidate) {
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        // keep trying candidates
+      }
+    }
+  }
+
+  return null;
+}
+
+function sanitizeTopics(topics: string[]): string[] {
+  const cleaned = topics
+    .map((topic) => topic.trim())
+    .filter((topic) => topic.length > 0);
+
+  if (cleaned.length === 0) return ["Uncategorized"];
+
+  const deduped = Array.from(new Set(cleaned));
+  if (deduped.length === 1) {
+    return [deduped[0]!, "Uncategorized"];
+  }
+
+  return deduped;
+}
+
+function toClassificationResult(
+  parsed: unknown,
+  content: FetchedContent
+): ClassificationResult | null {
+  const validation = ClassificationPayloadSchema.safeParse(parsed);
+  if (!validation.success) return null;
+
+  const data = validation.data;
+  const topics = sanitizeTopics(data.topics ?? []);
+  const topicRelationships = (data.topicRelationships ?? []).filter(
+    ([a, b]) => a.trim().length > 0 && b.trim().length > 0
+  );
+
+  return {
+    title: data.title ?? "",
+    summary: data.summary?.trim() || content.description || content.title,
+    keyConcepts: (data.keyConcepts ?? []).map((c) => c.trim()).filter(Boolean),
+    whyItMatters: data.whyItMatters ?? "",
+    connections: (data.connections ?? []).map((c) => c.trim()).filter(Boolean),
+    topics,
+    topicRelationships,
+  };
 }
 
 const FALLBACK: ClassificationResult = {
@@ -125,28 +301,26 @@ ${listing}`;
     return [];
   }
 
-  try {
-    const jsonStr = extractJsonFromResponse(rawResponse);
-    const parsed = JSON.parse(jsonStr);
-    const related: ResourceConnection[] = [];
-
-    if (Array.isArray(parsed.related)) {
-      for (const entry of parsed.related) {
-        const idx = typeof entry.index === "number" ? entry.index : -1;
-        if (idx >= 0 && idx < existingResources.length) {
-          related.push({
-            resourceId: existingResources[idx]!.id,
-            reason: typeof entry.reason === "string" ? entry.reason : "",
-          });
-        }
-      }
-    }
-
-    return related.slice(0, 3);
-  } catch (parseError) {
-    console.error("Failed to parse LLM connection response:", parseError);
+  const parsed = parseJsonFromRaw(rawResponse);
+  if (!parsed) {
     return [];
   }
+
+  const validation = RelatedResourcesPayloadSchema.safeParse(parsed);
+  if (!validation.success) return [];
+
+  const related: ResourceConnection[] = [];
+  for (const entry of validation.data.related ?? []) {
+    const idx = entry.index;
+    if (idx >= 0 && idx < existingResources.length) {
+      related.push({
+        resourceId: existingResources[idx]!.id,
+        reason: entry.reason ?? "",
+      });
+    }
+  }
+
+  return related.slice(0, 3);
 }
 
 // -- Resource classification --------------------------------------------------
@@ -158,57 +332,68 @@ export async function classifyResource(
 ): Promise<ClassificationResult> {
   const systemPrompt = buildSystemPrompt(context);
   const userPrompt = buildUserPrompt(content, userNotes);
+  const provider = (process.env.LLM_PROVIDER || "openai").toLowerCase();
+  const fallbackModel = provider === "openai"
+    ? (process.env.OPENAI_JSON_FALLBACK_MODEL || "gpt-4o-mini")
+    : (process.env.CLAUDE_JSON_FALLBACK_MODEL || "claude-sonnet-4-20250514");
 
-  let rawResponse: string;
-  try {
-    rawResponse = await chatCompletion(systemPrompt, userPrompt, "gpt-5-mini");
-  } catch (error) {
-    console.error("LLM call failed:", error);
-    return {
-      ...FALLBACK,
-      summary: content.description || content.title,
-      topics: ["Uncategorized"],
-    };
+  const attempts = [
+    {
+      system: systemPrompt,
+      user: userPrompt,
+      model: "gpt-5-mini",
+      label: "initial",
+    },
+    {
+      system: `${systemPrompt}\n\nIMPORTANT: Your previous output was malformed or truncated. Return a compact JSON object only. No markdown fences. No prose.`,
+      user: userPrompt,
+      model: "gpt-5-mini",
+      label: "retry",
+    },
+    {
+      system: `${systemPrompt}\n\nIMPORTANT: Return strictly valid JSON object with all required keys. Do not include markdown fences or explanatory text.`,
+      user: userPrompt,
+      model: fallbackModel,
+      label: "fallback-model",
+    },
+  ] as const;
+
+  let sawEmptyResponse = false;
+
+  for (const attempt of attempts) {
+    let rawResponse = "";
+    try {
+      rawResponse = await chatCompletion(attempt.system, attempt.user, attempt.model);
+    } catch (error) {
+      console.error(`LLM classification call failed (${attempt.label}):`, error);
+      continue;
+    }
+
+    if (!rawResponse.trim()) {
+      sawEmptyResponse = true;
+      continue;
+    }
+
+    const parsed = parseJsonFromRaw(rawResponse);
+    if (!parsed) {
+      continue;
+    }
+
+    const result = toClassificationResult(parsed, content);
+    if (result) {
+      return result;
+    }
   }
 
-  try {
-    const jsonStr = extractJsonFromResponse(rawResponse);
-    const parsed = JSON.parse(jsonStr);
-
-    const topics: string[] = Array.isArray(parsed.topics) && parsed.topics.length > 0
-      ? parsed.topics.filter((t: unknown) => typeof t === "string")
-      : ["Uncategorized"];
-
-    // Validate topicRelationships: each entry must be a pair of strings
-    const topicRelationships: [string, string][] = Array.isArray(parsed.topicRelationships)
-      ? parsed.topicRelationships.filter(
-          (pair: unknown) =>
-            Array.isArray(pair) &&
-            pair.length === 2 &&
-            typeof pair[0] === "string" &&
-            typeof pair[1] === "string"
-        )
-      : [];
-
-    return {
-      title: typeof parsed.title === "string" ? parsed.title : "",
-      summary: typeof parsed.summary === "string" ? parsed.summary : content.description || "",
-      keyConcepts: Array.isArray(parsed.keyConcepts)
-        ? parsed.keyConcepts.filter((c: unknown) => typeof c === "string")
-        : [],
-      whyItMatters: typeof parsed.whyItMatters === "string" ? parsed.whyItMatters : "",
-      connections: Array.isArray(parsed.connections)
-        ? parsed.connections.filter((c: unknown) => typeof c === "string")
-        : [],
-      topics,
-      topicRelationships,
-    };
-  } catch (parseError) {
-    console.error("Failed to parse LLM response:", parseError);
-    return {
-      ...FALLBACK,
-      summary: content.description || content.title,
-      topics: ["Uncategorized"],
-    };
+  if (sawEmptyResponse) {
+    console.warn("Classification LLM returned empty response; using fallback classification.");
+  } else {
+    console.warn("Classification LLM returned malformed JSON; using fallback classification.");
   }
+
+  return {
+    ...FALLBACK,
+    summary: content.description || content.title,
+    topics: ["Uncategorized"],
+  };
 }
