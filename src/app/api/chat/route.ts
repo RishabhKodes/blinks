@@ -3,6 +3,18 @@ import { eq } from "drizzle-orm";
 import { chatCompletionStream, type ChatMessage } from "@/lib/llm";
 import { buildQASystemPrompt, type QATopic, type QAResource, type QALink } from "@/lib/llm/qa";
 
+function toPublicErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "LLM request failed";
+
+  const message = error.message;
+  const isConfigError =
+    message.startsWith("OPENAI_API_KEY is required") ||
+    message.startsWith("ANTHROPIC_API_KEY is required") ||
+    message.startsWith("Unknown LLM_PROVIDER:");
+
+  return isConfigError ? message : "LLM request failed";
+}
+
 function loadKBContext() {
   const db = getDb();
 
@@ -88,8 +100,8 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "LLM request failed";
-    return new Response(JSON.stringify({ error: message }), {
+    console.error("Chat completion failed:", error);
+    return new Response(JSON.stringify({ error: toPublicErrorMessage(error) }), {
       status: 502,
       headers: { "Content-Type": "application/json" },
     });

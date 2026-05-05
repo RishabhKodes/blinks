@@ -57,7 +57,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-base font-medium">Current Provider</p>
                 <p className="text-sm text-ink-muted mt-0.5">
-                  Set via LLM_PROVIDER in .env.local
+                  Set via LLM_PROVIDER in .env or .env.local
                 </p>
               </div>
               <span className="text-sm font-mono bg-surface-hover px-3 py-1 rounded">

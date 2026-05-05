@@ -11,12 +11,15 @@ interface CompileResult {
   error?: string;
 }
 
+const TOPIC_NOT_FOUND_ERROR = "Topic not found";
+const COMPILE_FAILED_ERROR = "Compilation failed";
+
 async function compileOneTopic(topicId: string): Promise<CompileResult> {
   const db = getDb();
 
   const topic = db.select().from(schema.topics).where(eq(schema.topics.id, topicId)).get();
   if (!topic) {
-    return { topicId, topicName: topicId, status: "error", error: "Topic not found" };
+    return { topicId, topicName: topicId, status: "error", error: TOPIC_NOT_FOUND_ERROR };
   }
 
   // Load resources for this topic
@@ -107,7 +110,7 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
 
     return { topicId, topicName: topic.name, status: "compiled" };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Topic compile failed (${topicId}):`, error);
     // Track failure
     const now = new Date().toISOString();
     const existing = db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
@@ -121,7 +124,7 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
         .values({ topicId, compiledAt: now, status: "error" })
         .run();
     }
-    return { topicId, topicName: topic.name, status: "error", error: msg };
+    return { topicId, topicName: topic.name, status: "error", error: COMPILE_FAILED_ERROR };
   }
 }
 
@@ -151,7 +154,8 @@ export async function POST(request: Request) {
 
   const result = await compileOneTopic(topicId);
   if (result.status === "error") {
-    return NextResponse.json({ error: result.error, result }, { status: 500 });
+    const status = result.error === TOPIC_NOT_FOUND_ERROR ? 404 : 500;
+    return NextResponse.json({ error: result.error, result }, { status });
   }
   return NextResponse.json({ result });
 }
