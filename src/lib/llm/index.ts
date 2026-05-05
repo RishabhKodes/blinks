@@ -54,7 +54,7 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
     throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
   }
 
-  const model = modelOverride || process.env.OPENAI_MODEL || "gpt-4o";
+  const model = modelOverride || process.env.OPENAI_MODEL || "gpt-5.5";
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -173,7 +173,7 @@ async function openaiStreamRaw(
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
   }
-  const model = process.env.OPENAI_MODEL || "gpt-4o";
+  const model = process.env.OPENAI_MODEL || "gpt-5.5";
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

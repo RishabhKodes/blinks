@@ -334,7 +334,7 @@ export async function classifyResource(
   const userPrompt = buildUserPrompt(content, userNotes);
   const provider = (process.env.LLM_PROVIDER || "openai").toLowerCase();
   const fallbackModel = provider === "openai"
-    ? (process.env.OPENAI_JSON_FALLBACK_MODEL || "gpt-4o-mini")
+    ? (process.env.OPENAI_JSON_FALLBACK_MODEL || "gpt-5.4-mini")
     : (process.env.CLAUDE_JSON_FALLBACK_MODEL || "claude-sonnet-4-20250514");
 
   const attempts = [
