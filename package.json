@@ -4,15 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
+    "build:worker": "npx @opennextjs/cloudflare build",
+    "deploy": "npm run build:worker && wrangler deploy",
+    "preview": "npm run build:worker && wrangler dev",
+    "db:init:local": "wrangler d1 execute blinks-db --local --file d1-schema.sql",
+    "db:migrate:local": "wrangler d1 migrations apply blinks-db --local",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
-    "better-sqlite3": "^12.9.0",
+    "@opennextjs/cloudflare": "^1.19.6",
     "defuddle": "^0.18.1",
     "drizzle-orm": "^0.45.2",
-    "gray-matter": "^4.0.3",
     "linkedom": "^0.18.12",
     "next": "16.2.4",
     "open-graph-scraper": "^6.11.0",
@@ -23,8 +27,8 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260506.1",
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -33,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.88.0"
   }
 }

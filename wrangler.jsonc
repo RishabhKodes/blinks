@@ -1,0 +1,23 @@
+{
+  "name": "blinks-server",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blinks-db",
+      // Replace this for real Cloudflare deployments.
+      // Any UUID works for local `--local` D1 usage.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "vars": {
+    "LLM_PROVIDER":"openai"
+  }
+}
