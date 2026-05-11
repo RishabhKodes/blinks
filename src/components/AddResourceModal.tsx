@@ -52,9 +52,10 @@ export function AddResourceModal({
         });
 
         if (res.ok) {
-          const data = await res.json();
-          const title = data.resource?.title || data.title || "Resource";
-          const topicList = data.resource?.topics || data.topics || [];
+          const data = await res.json() as Record<string, unknown>;
+          const resource = data.resource as Record<string, unknown> | undefined;
+          const title = resource?.title || data.title || "Resource";
+          const topicList = (resource?.topics || data.topics || []) as string[];
           const topics =
             topicList.length > 0
               ? topicList.join(", ")
@@ -65,8 +66,8 @@ export function AddResourceModal({
           setNotes("");
           onClose();
         } else {
-          const errData = await res.json().catch(() => null);
-          const msg = errData?.error || `Failed to save (${res.status})`;
+          const errData = await res.json().catch(() => null) as Record<string, unknown> | null;
+          const msg = (errData?.error as string) || `Failed to save (${res.status})`;
           addToast(msg, "error");
         }
       } catch {

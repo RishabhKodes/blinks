@@ -56,17 +56,17 @@ function ShareHandler() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setTitle(data.resource?.title || "Resource");
-        setTopics(data.resource?.topics || []);
+        const data = await res.json() as Record<string, Record<string, unknown>>;
+        setTitle((data.resource?.title as string) || "Resource");
+        setTopics((data.resource?.topics as string[]) || []);
         setStatus("success");
       } else if (res.status === 409) {
-        const data = await res.json().catch(() => null);
-        setTitle(data?.resource?.title || "Resource");
+        const data = await res.json().catch(() => null) as Record<string, Record<string, unknown>> | null;
+        setTitle((data?.resource?.title as string) || "Resource");
         setStatus("duplicate");
       } else {
-        const data = await res.json().catch(() => null);
-        setErrorMsg(data?.error || `Failed (${res.status})`);
+        const data = await res.json().catch(() => null) as Record<string, unknown> | null;
+        setErrorMsg((data?.error as string) || `Failed (${res.status})`);
         setStatus("error");
       }
     } catch {

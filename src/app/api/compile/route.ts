@@ -15,26 +15,25 @@ const TOPIC_NOT_FOUND_ERROR = "Topic not found";
 const COMPILE_FAILED_ERROR = "Compilation failed";
 
 async function compileOneTopic(topicId: string): Promise<CompileResult> {
-  const db = getDb();
+  const db = await getDb();
 
-  const topic = db.select().from(schema.topics).where(eq(schema.topics.id, topicId)).get();
+  const topic = await db.select().from(schema.topics).where(eq(schema.topics.id, topicId)).get();
   if (!topic) {
     return { topicId, topicName: topicId, status: "error", error: TOPIC_NOT_FOUND_ERROR };
   }
 
-  // Load resources for this topic
-  const resourceIds = db
+  const resourceIds = await db
     .select({ resourceId: schema.resourceTopics.resourceId })
     .from(schema.resourceTopics)
-    .where(eq(schema.resourceTopics.topicId, topicId))
-    .all();
+    .where(eq(schema.resourceTopics.topicId, topicId));
 
-  const resources = resourceIds.map((r) =>
-    db.select().from(schema.resources).where(eq(schema.resources.id, r.resourceId)).get()
-  ).filter(Boolean);
+  const resources = [];
+  for (const r of resourceIds) {
+    const res = await db.select().from(schema.resources).where(eq(schema.resources.id, r.resourceId)).get();
+    if (res) resources.push(res);
+  }
 
-  // Load related topics via topic links
-  const links = db
+  const links = await db
     .select()
     .from(schema.topicLinks)
     .where(
@@ -42,8 +41,7 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
         eq(schema.topicLinks.sourceTopicId, topicId),
         eq(schema.topicLinks.targetTopicId, topicId)
       )
-    )
-    .all();
+    );
 
   const relatedTopicIds = new Set<string>();
   for (const link of links) {
@@ -51,19 +49,19 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
     if (link.targetTopicId !== topicId) relatedTopicIds.add(link.targetTopicId);
   }
 
-  const relatedTopicNames = [...relatedTopicIds].map((id) => {
-    const t = db.select().from(schema.topics).where(eq(schema.topics.id, id)).get();
-    return t?.name || id;
-  });
+  const relatedTopicNames = [];
+  for (const id of relatedTopicIds) {
+    const t = await db.select().from(schema.topics).where(eq(schema.topics.id, id)).get();
+    relatedTopicNames.push(t?.name || id);
+  }
 
-  // Compile
   try {
     const compiled = await compileTopic(
       topic.name,
       topic.description,
       resources.map((r) => ({
-        title: r!.title,
-        summary: r!.summary,
+        title: r.title,
+        summary: r.summary,
         keyConcepts: [],
         connections: [],
       })),
@@ -72,29 +70,23 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
 
     const now = new Date().toISOString();
 
-    // Update topic description in DB
-    db.update(schema.topics)
+    await db.update(schema.topics)
       .set({ description: compiled, updatedAt: now })
-      .where(eq(schema.topics.id, topicId))
-      .run();
+      .where(eq(schema.topics.id, topicId));
 
-    // Update compilation tracking
-    const existing = db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
+    const existing = await db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
     if (existing) {
-      db.update(schema.wikiCompilations)
+      await db.update(schema.wikiCompilations)
         .set({ compiledAt: now, status: "compiled" })
-        .where(eq(schema.wikiCompilations.topicId, topicId))
-        .run();
+        .where(eq(schema.wikiCompilations.topicId, topicId));
     } else {
-      db.insert(schema.wikiCompilations)
-        .values({ topicId, compiledAt: now, status: "compiled" })
-        .run();
+      await db.insert(schema.wikiCompilations)
+        .values({ topicId, compiledAt: now, status: "compiled" });
     }
 
-    // Rewrite vault file
     ensureVaultStructure();
     const backlinks = relatedTopicNames.map((n) => `[[${n}]]`);
-    const resourceEntries = resources.map((r) => `[[${resourceSlug(r!.title)}]] - ${r!.title}`);
+    const resourceEntries = resources.map((r) => `[[${resourceSlug(r.title)}]] - ${r.title}`);
     writeTopicFile(
       {
         id: topicId,
@@ -111,18 +103,15 @@ async function compileOneTopic(topicId: string): Promise<CompileResult> {
     return { topicId, topicName: topic.name, status: "compiled" };
   } catch (error) {
     console.error(`Topic compile failed (${topicId}):`, error);
-    // Track failure
     const now = new Date().toISOString();
-    const existing = db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
+    const existing = await db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
     if (existing) {
-      db.update(schema.wikiCompilations)
+      await db.update(schema.wikiCompilations)
         .set({ compiledAt: now, status: "error" })
-        .where(eq(schema.wikiCompilations.topicId, topicId))
-        .run();
+        .where(eq(schema.wikiCompilations.topicId, topicId));
     } else {
-      db.insert(schema.wikiCompilations)
-        .values({ topicId, compiledAt: now, status: "error" })
-        .run();
+      await db.insert(schema.wikiCompilations)
+        .values({ topicId, compiledAt: now, status: "error" });
     }
     return { topicId, topicName: topic.name, status: "error", error: COMPILE_FAILED_ERROR };
   }
@@ -142,8 +131,8 @@ export async function POST(request: Request) {
   }
 
   if (topicId === "all") {
-    const db = getDb();
-    const allTopics = db.select().from(schema.topics).all();
+    const db = await getDb();
+    const allTopics = await db.select().from(schema.topics);
     const results: CompileResult[] = [];
     for (const topic of allTopics) {
       const result = await compileOneTopic(topic.id);
@@ -160,18 +149,17 @@ export async function POST(request: Request) {
   return NextResponse.json({ result });
 }
 
-// GET compilation status for a topic
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const topicId = searchParams.get("topicId");
 
-  const db = getDb();
+  const db = await getDb();
 
   if (topicId) {
-    const compilation = db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
+    const compilation = await db.select().from(schema.wikiCompilations).where(eq(schema.wikiCompilations.topicId, topicId)).get();
     return NextResponse.json(compilation || null);
   }
 
-  const all = db.select().from(schema.wikiCompilations).all();
+  const all = await db.select().from(schema.wikiCompilations);
   return NextResponse.json(all);
 }

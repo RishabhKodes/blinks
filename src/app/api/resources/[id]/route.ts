@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 
-// PATCH /api/resources/[id] -- archive or unarchive a resource
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json() as { action?: string };
   const { action } = body;
 
   if (action !== "archive" && action !== "unarchive") {
@@ -18,8 +17,8 @@ export async function PATCH(
     );
   }
 
-  const db = getDb();
-  const resource = db
+  const db = await getDb();
+  const resource = await db
     .select()
     .from(schema.resources)
     .where(eq(schema.resources.id, id))
@@ -30,23 +29,21 @@ export async function PATCH(
   }
 
   const archivedAt = action === "archive" ? new Date().toISOString() : null;
-  db.update(schema.resources)
+  await db.update(schema.resources)
     .set({ archivedAt })
-    .where(eq(schema.resources.id, id))
-    .run();
+    .where(eq(schema.resources.id, id));
 
   return NextResponse.json({ ok: true, archivedAt });
 }
 
-// DELETE /api/resources/[id] -- permanently delete a resource
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
 
-  const resource = db
+  const resource = await db
     .select()
     .from(schema.resources)
     .where(eq(schema.resources.id, id))
@@ -56,15 +53,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Resource not found" }, { status: 404 });
   }
 
-  // Cascade deletes handle resource_topics and resource_links
-  db.delete(schema.resources)
-    .where(eq(schema.resources.id, id))
-    .run();
+  await db.delete(schema.resources)
+    .where(eq(schema.resources.id, id));
 
-  // Clean up graph position
-  db.delete(schema.graphPositions)
-    .where(eq(schema.graphPositions.nodeId, id))
-    .run();
+  await db.delete(schema.graphPositions)
+    .where(eq(schema.graphPositions.nodeId, id));
 
   return NextResponse.json({ ok: true });
 }

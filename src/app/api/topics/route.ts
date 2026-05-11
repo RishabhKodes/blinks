@@ -7,16 +7,14 @@ import {
   ensureVaultStructure,
 } from "@/lib/vault";
 
-// GET /api/topics -- list all topics
 export async function GET() {
-  const db = getDb();
-  const allTopics = db.select().from(schema.topics).all();
+  const db = await getDb();
+  const allTopics = await db.select().from(schema.topics);
   return NextResponse.json(allTopics);
 }
 
-// POST /api/topics -- create a new topic
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body = await request.json() as { name?: string; description?: string; backlinks?: string[] };
   const { name, description = "", backlinks = [] } = body;
 
   if (!name) {
@@ -25,10 +23,9 @@ export async function POST(request: Request) {
 
   const id = slugify(name);
   const now = new Date().toISOString();
-  const db = getDb();
+  const db = await getDb();
 
-  // Check if already exists
-  const existing = db
+  const existing = await db
     .select()
     .from(schema.topics)
     .where(eq(schema.topics.id, id))
@@ -37,31 +34,24 @@ export async function POST(request: Request) {
     return NextResponse.json(existing);
   }
 
-  // Insert into SQLite
-  db.insert(schema.topics)
-    .values({ id, name, description, createdAt: now, updatedAt: now })
-    .run();
+  await db.insert(schema.topics)
+    .values({ id, name, description, createdAt: now, updatedAt: now });
 
-  // Insert backlinks into topic_links
   for (const targetName of backlinks) {
     const targetId = slugify(targetName.replace(/\[\[|\]\]/g, ""));
-    const targetExists = db
+    const targetExists = await db
       .select()
       .from(schema.topics)
       .where(eq(schema.topics.id, targetId))
       .get();
     if (targetExists) {
-      db.insert(schema.topicLinks)
-        .values({ sourceTopicId: id, targetTopicId: targetId })
-        .run();
-      // Bidirectional
-      db.insert(schema.topicLinks)
-        .values({ sourceTopicId: targetId, targetTopicId: id })
-        .run();
+      await db.insert(schema.topicLinks)
+        .values({ sourceTopicId: id, targetTopicId: targetId });
+      await db.insert(schema.topicLinks)
+        .values({ sourceTopicId: targetId, targetTopicId: id });
     }
   }
 
-  // Write markdown file
   ensureVaultStructure();
   writeTopicFile(
     {
@@ -78,7 +68,7 @@ export async function POST(request: Request) {
     []
   );
 
-  const created = db
+  const created = await db
     .select()
     .from(schema.topics)
     .where(eq(schema.topics.id, id))

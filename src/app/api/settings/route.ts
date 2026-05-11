@@ -8,6 +8,6 @@ export async function GET() {
     openaiModel: process.env.OPENAI_MODEL || "gpt-5.5",
     hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
     hasOpenaiKey: !!process.env.OPENAI_API_KEY,
-    vaultPath: "./blinks-vault",
+    storagePath: "d1://blinks-db",
   });
 }

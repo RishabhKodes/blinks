@@ -10,7 +10,6 @@ import {
   ensureVaultStructure,
 } from "@/lib/vault";
 
-// POST /api/file -- file a Q&A output back into the knowledge base
 export async function POST(request: Request) {
   let body: {
     content?: string;
@@ -33,8 +32,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const db = getDb();
-  const topic = db.select().from(schema.topics).where(eq(schema.topics.id, topicId)).get();
+  const db = await getDb();
+  const topic = await db.select().from(schema.topics).where(eq(schema.topics.id, topicId)).get();
   if (!topic) {
     return NextResponse.json({ error: "Topic not found" }, { status: 404 });
   }
@@ -43,7 +42,6 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
 
   if (action === "enhance_topic") {
-    // Append content to topic description
     const separator = topic.description ? "\n\n## Q&A Insights\n\n" : "";
     const newDescription = topic.description
       ? (topic.description.includes("## Q&A Insights")
@@ -51,32 +49,29 @@ export async function POST(request: Request) {
           : topic.description + separator + content)
       : content;
 
-    db.update(schema.topics)
+    await db.update(schema.topics)
       .set({ description: newDescription, updatedAt: now })
-      .where(eq(schema.topics.id, topicId))
-      .run();
+      .where(eq(schema.topics.id, topicId));
 
-    // Rewrite vault file
-    const resourceIds = db
+    const resourceIds = await db
       .select({ resourceId: schema.resourceTopics.resourceId })
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.topicId, topicId))
-      .all();
+      .where(eq(schema.resourceTopics.topicId, topicId));
 
-    const resourceEntries = resourceIds.map((r) => {
-      const res = db.select().from(schema.resources).where(eq(schema.resources.id, r.resourceId)).get();
-      return res ? `[[${resourceSlug(res.title)}]] - ${res.title}` : "";
-    }).filter(Boolean);
+    const resourceEntries = [];
+    for (const r of resourceIds) {
+      const res = await db.select().from(schema.resources).where(eq(schema.resources.id, r.resourceId)).get();
+      if (res) resourceEntries.push(`[[${resourceSlug(res.title)}]] - ${res.title}`);
+    }
 
-    const linkRows = db.select().from(schema.topicLinks).all();
-    const backlinks = linkRows
-      .filter((l) => l.sourceTopicId === topicId || l.targetTopicId === topicId)
-      .map((l) => {
-        const otherId = l.sourceTopicId === topicId ? l.targetTopicId : l.sourceTopicId;
-        const other = db.select().from(schema.topics).where(eq(schema.topics.id, otherId)).get();
-        return other ? `[[${other.name}]]` : "";
-      })
-      .filter(Boolean);
+    const linkRows = await db.select().from(schema.topicLinks);
+    const backlinks = [];
+    for (const l of linkRows) {
+      if (l.sourceTopicId !== topicId && l.targetTopicId !== topicId) continue;
+      const otherId = l.sourceTopicId === topicId ? l.targetTopicId : l.sourceTopicId;
+      const other = await db.select().from(schema.topics).where(eq(schema.topics.id, otherId)).get();
+      if (other) backlinks.push(`[[${other.name}]]`);
+    }
 
     writeTopicFile(
       {
@@ -99,7 +94,7 @@ export async function POST(request: Request) {
     const id = uuidv4();
     const slug = resourceSlug(resourceTitle);
 
-    db.insert(schema.resources)
+    await db.insert(schema.resources)
       .values({
         id,
         url: `qa://${slug}-${Date.now()}`,
@@ -110,12 +105,10 @@ export async function POST(request: Request) {
         thumbnail: "",
         summary: content.slice(0, 500),
         savedAt: now,
-      })
-      .run();
+      });
 
-    db.insert(schema.resourceTopics)
-      .values({ resourceId: id, topicId })
-      .run();
+    await db.insert(schema.resourceTopics)
+      .values({ resourceId: id, topicId });
 
     writeResourceFile(
       topicId,

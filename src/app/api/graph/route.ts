@@ -2,24 +2,20 @@ import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, isNull } from "drizzle-orm";
 
-// GET /api/graph -- resources as nodes, shared-topic edges
 export async function GET() {
-  const db = getDb();
+  const db = await getDb();
 
-  // Only show non-archived resources in the graph
-  const allResources = db
+  const allResources = await db
     .select()
     .from(schema.resources)
-    .where(isNull(schema.resources.archivedAt))
-    .all();
-  const allResourceTopics = db.select().from(schema.resourceTopics).all();
-  const allTopics = db.select().from(schema.topics).all();
-  const allPositions = db.select().from(schema.graphPositions).all();
+    .where(isNull(schema.resources.archivedAt));
+  const allResourceTopics = await db.select().from(schema.resourceTopics);
+  const allTopics = await db.select().from(schema.topics);
+  const allPositions = await db.select().from(schema.graphPositions);
 
   const posMap = new Map(allPositions.map((p) => [p.nodeId, { x: p.x, y: p.y }]));
   const topicNameMap = new Map(allTopics.map((t) => [t.id, t.name]));
 
-  // Build topics-per-resource map
   const topicsByResource = new Map<string, string[]>();
   for (const rt of allResourceTopics) {
     const arr = topicsByResource.get(rt.resourceId) || [];
@@ -28,7 +24,6 @@ export async function GET() {
     topicsByResource.set(rt.resourceId, arr);
   }
 
-  // Build edges from shared topics (resources sharing 2+ topics get connected)
   const resourceIdSet = new Set(allResources.map((r) => r.id));
   const linkSet = new Set<string>();
   const links: { source: string; target: string }[] = [];
@@ -76,39 +71,36 @@ export async function GET() {
   return NextResponse.json({ nodes, links });
 }
 
-// POST /api/graph -- save node positions
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body = await request.json() as { positions?: { nodeId?: string; x: number; y: number }[] };
   const { positions } = body;
 
   if (!Array.isArray(positions)) {
     return NextResponse.json({ error: "positions array required" }, { status: 400 });
   }
 
-  const db = getDb();
+  const db = await getDb();
   for (const pos of positions) {
     const nodeId = pos.nodeId;
     if (!nodeId) continue;
 
-    const existing = db
+    const existing = await db
       .select()
       .from(schema.graphPositions)
       .where(eq(schema.graphPositions.nodeId, nodeId))
       .get();
 
     if (existing) {
-      db.update(schema.graphPositions)
+      await db.update(schema.graphPositions)
         .set({ x: Math.round(pos.x), y: Math.round(pos.y) })
-        .where(eq(schema.graphPositions.nodeId, nodeId))
-        .run();
+        .where(eq(schema.graphPositions.nodeId, nodeId));
     } else {
-      db.insert(schema.graphPositions)
+      await db.insert(schema.graphPositions)
         .values({
           nodeId,
           x: Math.round(pos.x),
           y: Math.round(pos.y),
-        })
-        .run();
+        });
     }
   }
 

@@ -15,42 +15,45 @@ function toPublicErrorMessage(error: unknown): string {
   return isConfigError ? message : "LLM request failed";
 }
 
-function loadKBContext() {
-  const db = getDb();
+async function loadKBContext() {
+  const db = await getDb();
 
-  const allTopics = db.select().from(schema.topics).all();
-  const allResources = db.select().from(schema.resources).all();
-  const allLinks = db.select().from(schema.topicLinks).all();
+  const allTopics = await db.select().from(schema.topics);
+  const allResources = await db.select().from(schema.resources);
+  const allLinks = await db.select().from(schema.topicLinks);
 
-  const topics: QATopic[] = allTopics.map((t) => ({
-    name: t.name,
-    description: t.description,
-    resourceCount: db
+  const topics: QATopic[] = [];
+  for (const t of allTopics) {
+    const rtRows = await db
       .select()
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.topicId, t.id))
-      .all().length,
-  }));
+      .where(eq(schema.resourceTopics.topicId, t.id));
+    topics.push({
+      name: t.name,
+      description: t.description,
+      resourceCount: rtRows.length,
+    });
+  }
 
-  const resources: QAResource[] = allResources.map((r) => {
-    const topicRows = db
+  const resources: QAResource[] = [];
+  for (const r of allResources) {
+    const topicRows = await db
       .select({ topicId: schema.resourceTopics.topicId })
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.resourceId, r.id))
-      .all();
+      .where(eq(schema.resourceTopics.resourceId, r.id));
     const topicNames = topicRows.map((tr) => {
       const topic = allTopics.find((t) => t.id === tr.topicId);
       return topic?.name || tr.topicId;
     });
-    return {
+    resources.push({
       title: r.title,
       summary: r.summary,
       url: r.url,
       source: r.source,
       type: r.type,
       topics: topicNames,
-    };
-  });
+    });
+  }
 
   const topicLinks: QALink[] = allLinks.map((l) => {
     const src = allTopics.find((t) => t.id === l.sourceTopicId);
@@ -83,7 +86,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const { topics, resources, topicLinks } = loadKBContext();
+  const { topics, resources, topicLinks } = await loadKBContext();
 
   if (topics.length === 0 && resources.length === 0) {
     return new Response(

@@ -10,28 +10,25 @@ import {
   ensureVaultStructure,
 } from "@/lib/vault";
 
-// GET /api/resources -- list all resources
 export async function GET() {
-  const db = getDb();
-  const allResources = db.select().from(schema.resources).all();
+  const db = await getDb();
+  const allResources = await db.select().from(schema.resources);
 
-  // Attach topics to each resource
-  const result = allResources.map((r) => {
-    const topicRows = db
+  const result = [];
+  for (const r of allResources) {
+    const topicRows = await db
       .select({ topicId: schema.resourceTopics.topicId })
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.resourceId, r.id))
-      .all();
+      .where(eq(schema.resourceTopics.resourceId, r.id));
     const topicIds = topicRows.map((t) => t.topicId);
-    return { ...r, topics: topicIds };
-  });
+    result.push({ ...r, topics: topicIds });
+  }
 
   return NextResponse.json(result);
 }
 
-// POST /api/resources -- create a new resource (called after LLM classification)
 export async function POST(request: Request) {
-  const body = await request.json();
+  const body = await request.json() as Record<string, unknown>;
   const {
     url,
     title,
@@ -44,7 +41,19 @@ export async function POST(request: Request) {
     whyItMatters = "",
     connections = [],
     topics: topicNames = [],
-  } = body;
+  } = body as {
+    url?: string;
+    title?: string;
+    type?: string;
+    author?: string;
+    source?: string;
+    thumbnail?: string;
+    summary?: string;
+    keyConcepts?: string[];
+    whyItMatters?: string;
+    connections?: string[];
+    topics?: string[];
+  };
 
   if (!url || !title) {
     return NextResponse.json(
@@ -53,11 +62,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const db = getDb();
+  const db = await getDb();
   ensureVaultStructure();
 
-  // Check duplicate URL
-  const existing = db
+  const existing = await db
     .select()
     .from(schema.resources)
     .where(eq(schema.resources.url, url))
@@ -73,8 +81,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const slug = resourceSlug(title);
 
-  // Insert resource
-  db.insert(schema.resources)
+  await db.insert(schema.resources)
     .values({
       id,
       url,
@@ -85,67 +92,57 @@ export async function POST(request: Request) {
       thumbnail,
       summary,
       savedAt: now,
-    })
-    .run();
+    });
 
-  // Ensure topics exist and link them
   const topicBacklinks: string[] = [];
   for (const topicName of topicNames) {
     const topicId = slugify(topicName);
-    const existingTopic = db
+    const existingTopic = await db
       .select()
       .from(schema.topics)
       .where(eq(schema.topics.id, topicId))
       .get();
 
     if (!existingTopic) {
-      db.insert(schema.topics)
+      await db.insert(schema.topics)
         .values({
           id: topicId,
           name: topicName,
           description: "",
           createdAt: now,
           updatedAt: now,
-        })
-        .run();
+        });
     } else {
-      db.update(schema.topics)
+      await db.update(schema.topics)
         .set({ updatedAt: now })
-        .where(eq(schema.topics.id, topicId))
-        .run();
+        .where(eq(schema.topics.id, topicId));
     }
 
-    // Link resource to topic
-    db.insert(schema.resourceTopics)
-      .values({ resourceId: id, topicId })
-      .run();
+    await db.insert(schema.resourceTopics)
+      .values({ resourceId: id, topicId });
 
     topicBacklinks.push(`[[${topicName}]]`);
   }
 
-  // Write resource markdown file (to the first topic's directory)
   const primaryTopicId = slugify(topicNames[0] || "uncategorized");
   if (topicNames.length === 0) {
-    // Ensure uncategorized topic exists
-    const uncatExists = db
+    const uncatExists = await db
       .select()
       .from(schema.topics)
       .where(eq(schema.topics.id, "uncategorized"))
       .get();
     if (!uncatExists) {
-      db.insert(schema.topics)
+      await db.insert(schema.topics)
         .values({
           id: "uncategorized",
           name: "Uncategorized",
           description: "Resources not yet classified",
           createdAt: now,
           updatedAt: now,
-        })
-        .run();
+        });
     }
-    db.insert(schema.resourceTopics)
-      .values({ resourceId: id, topicId: "uncategorized" })
-      .run();
+    await db.insert(schema.resourceTopics)
+      .values({ resourceId: id, topicId: "uncategorized" });
   }
 
   writeResourceFile(
@@ -169,39 +166,38 @@ export async function POST(request: Request) {
     }
   );
 
-  // Update topic markdown files
   for (const topicName of topicNames) {
     const topicId = slugify(topicName);
-    const topicResources = db
+    const topicResources = await db
       .select({ resourceId: schema.resourceTopics.resourceId })
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.topicId, topicId))
-      .all();
+      .where(eq(schema.resourceTopics.topicId, topicId));
 
-    const resourceEntries = topicResources.map((tr) => {
-      const r = db
+    const resourceEntries = [];
+    for (const tr of topicResources) {
+      const r = await db
         .select()
         .from(schema.resources)
         .where(eq(schema.resources.id, tr.resourceId))
         .get();
-      return r ? `[[${resourceSlug(r.title)}]] - ${r.title}` : "";
-    }).filter(Boolean);
+      if (r) resourceEntries.push(`[[${resourceSlug(r.title)}]] - ${r.title}`);
+    }
 
-    const topicLinksRows = db
+    const topicLinksRows = await db
       .select({ targetTopicId: schema.topicLinks.targetTopicId })
       .from(schema.topicLinks)
-      .where(eq(schema.topicLinks.sourceTopicId, topicId))
-      .all();
-    const backlinks = topicLinksRows.map((l) => {
-      const t = db
+      .where(eq(schema.topicLinks.sourceTopicId, topicId));
+    const backlinks = [];
+    for (const l of topicLinksRows) {
+      const t = await db
         .select()
         .from(schema.topics)
         .where(eq(schema.topics.id, l.targetTopicId))
         .get();
-      return t ? `[[${t.name}]]` : "";
-    }).filter(Boolean);
+      if (t) backlinks.push(`[[${t.name}]]`);
+    }
 
-    const topic = db
+    const topic = await db
       .select()
       .from(schema.topics)
       .where(eq(schema.topics.id, topicId))

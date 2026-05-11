@@ -41,7 +41,8 @@ async function claudeChat(systemPrompt: string, userPrompt: string, modelOverrid
     throw new Error(`Claude API error (${response.status}): ${errText}`);
   }
 
-  const data = await response.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await response.json() as any;
   const textBlock = data.content?.find(
     (block: { type: string; text?: string }) => block.type === "text"
   );
@@ -78,7 +79,8 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
     throw new Error(`OpenAI API error (${response.status}): ${errText}`);
   }
 
-  const data = await response.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await response.json() as any;
   const message = data.choices?.[0]?.message;
 
   if (typeof message?.content === "string") {

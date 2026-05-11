@@ -75,7 +75,8 @@ async function fetchTweet(url: string): Promise<FetchedContent | null> {
     });
     if (!res.ok) return null;
 
-    const data = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await res.json() as any;
     const tweet = data.tweet;
     if (!tweet) return null;
 

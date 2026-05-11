@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { like, or, eq } from "drizzle-orm";
 
-// GET /api/search?q=query -- search topics and resources
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
@@ -11,11 +10,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ topics: [], resources: [] });
   }
 
-  const db = getDb();
+  const db = await getDb();
   const pattern = `%${query}%`;
 
-  // Search topics by name or description
-  const matchedTopics = db
+  const matchedTopics = await db
     .select()
     .from(schema.topics)
     .where(
@@ -23,11 +21,9 @@ export async function GET(request: Request) {
         like(schema.topics.name, pattern),
         like(schema.topics.description, pattern)
       )
-    )
-    .all();
+    );
 
-  // Search resources by title, summary, author, or source
-  const matchedResources = db
+  const matchedResources = await db
     .select()
     .from(schema.resources)
     .where(
@@ -37,18 +33,16 @@ export async function GET(request: Request) {
         like(schema.resources.author, pattern),
         like(schema.resources.source, pattern)
       )
-    )
-    .all();
+    );
 
-  // Attach topics to each resource
-  const resourcesWithTopics = matchedResources.map((r) => {
-    const topicRows = db
+  const resourcesWithTopics = [];
+  for (const r of matchedResources) {
+    const topicRows = await db
       .select({ topicId: schema.resourceTopics.topicId })
       .from(schema.resourceTopics)
-      .where(eq(schema.resourceTopics.resourceId, r.id))
-      .all();
-    return { ...r, topics: topicRows.map((t) => t.topicId) };
-  });
+      .where(eq(schema.resourceTopics.resourceId, r.id));
+    resourcesWithTopics.push({ ...r, topics: topicRows.map((t) => t.topicId) });
+  }
 
   return NextResponse.json({
     topics: matchedTopics,

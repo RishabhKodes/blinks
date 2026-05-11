@@ -12,16 +12,15 @@ import { fetchContent } from "@/lib/content/fetcher";
 import { classifyResource } from "@/lib/llm/classify";
 import type { GraphContext } from "@/lib/llm/classify";
 
-function getGraphContext(): GraphContext {
-  const db = getDb();
-  const allTopics = db.select().from(schema.topics).all();
+async function getGraphContext(): Promise<GraphContext> {
+  const db = await getDb();
+  const allTopics = await db.select().from(schema.topics);
 
   return {
     existingTopics: allTopics.map((t) => t.name),
   };
 }
 
-// POST /api/ingest -- full ingestion pipeline
 export async function POST(request: Request) {
   let body: { url?: string; notes?: string };
   try {
@@ -42,10 +41,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
   }
 
-  const db = getDb();
+  const db = await getDb();
 
-  // Check for duplicate URL
-  const existing = db
+  const existing = await db
     .select()
     .from(schema.resources)
     .where(eq(schema.resources.url, url))
@@ -57,7 +55,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Step 1: Fetch content
   let content;
   try {
     content = await fetchContent(url);
@@ -69,24 +66,19 @@ export async function POST(request: Request) {
     );
   }
 
-  // Step 2: Get graph context (existing topics)
-  const graphContext = getGraphContext();
-
-  // Step 3: Classify with LLM
+  const graphContext = await getGraphContext();
   const classification = await classifyResource(content, graphContext, notes);
 
-  // Step 4: Create resource
   const id = uuidv4();
   const now = new Date().toISOString();
 
-  // Prefer LLM-generated title when the fetcher only returned the URL
   const isUrlTitle = content.title === content.url || content.title.startsWith("http");
   const title = (isUrlTitle && classification.title) ? classification.title : content.title;
 
   const slug = resourceSlug(title);
   ensureVaultStructure();
 
-  db.insert(schema.resources)
+  await db.insert(schema.resources)
     .values({
       id,
       url: content.url,
@@ -97,68 +89,58 @@ export async function POST(request: Request) {
       thumbnail: content.thumbnail,
       summary: classification.summary,
       savedAt: now,
-    })
-    .run();
+    });
 
-  // Step 5: Ensure topics exist and link resource to them
   const topicBacklinks: string[] = [];
   for (const topicName of classification.topics) {
     const topicId = slugify(topicName);
-    const existingTopic = db
+    const existingTopic = await db
       .select()
       .from(schema.topics)
       .where(eq(schema.topics.id, topicId))
       .get();
 
     if (!existingTopic) {
-      db.insert(schema.topics)
-        .values({ id: topicId, name: topicName, description: "", createdAt: now, updatedAt: now })
-        .run();
+      await db.insert(schema.topics)
+        .values({ id: topicId, name: topicName, description: "", createdAt: now, updatedAt: now });
     }
 
-    db.insert(schema.resourceTopics)
-      .values({ resourceId: id, topicId })
-      .run();
+    await db.insert(schema.resourceTopics)
+      .values({ resourceId: id, topicId });
 
     topicBacklinks.push(`[[${topicName}]]`);
   }
 
-  // Step 6: Create topic-to-topic links from LLM relationships
   for (const [topicA, topicB] of classification.topicRelationships) {
     const idA = slugify(topicA);
     const idB = slugify(topicB);
     if (idA === idB) continue;
 
-    // Ensure both topics exist (LLM may reference existing topics)
     for (const [tid, tname] of [[idA, topicA], [idB, topicB]] as const) {
-      const exists = db.select().from(schema.topics).where(eq(schema.topics.id, tid)).get();
+      const exists = await db.select().from(schema.topics).where(eq(schema.topics.id, tid)).get();
       if (!exists) {
-        db.insert(schema.topics)
-          .values({ id: tid, name: tname, description: "", createdAt: now, updatedAt: now })
-          .run();
+        await db.insert(schema.topics)
+          .values({ id: tid, name: tname, description: "", createdAt: now, updatedAt: now });
       }
     }
 
-    // Check if link already exists (either direction)
-    const existingLink = db
+    const existingLink = await db
       .select()
       .from(schema.topicLinks)
       .where(and(eq(schema.topicLinks.sourceTopicId, idA), eq(schema.topicLinks.targetTopicId, idB)))
       .get();
-    const reverseLink = db
+    const reverseLink = await db
       .select()
       .from(schema.topicLinks)
       .where(and(eq(schema.topicLinks.sourceTopicId, idB), eq(schema.topicLinks.targetTopicId, idA)))
       .get();
 
     if (!existingLink && !reverseLink) {
-      db.insert(schema.topicLinks)
-        .values({ sourceTopicId: idA, targetTopicId: idB })
-        .run();
+      await db.insert(schema.topicLinks)
+        .values({ sourceTopicId: idA, targetTopicId: idB });
     }
   }
 
-  // Step 7: Write markdown file
   const primaryTopicId = slugify(classification.topics[0] || "uncategorized");
   writeResourceFile(
     primaryTopicId,

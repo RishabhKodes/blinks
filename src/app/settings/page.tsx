@@ -9,7 +9,7 @@ interface Settings {
   openaiModel: string;
   hasAnthropicKey: boolean;
   hasOpenaiKey: boolean;
-  vaultPath: string;
+  storagePath: string;
 }
 
 export default function SettingsPage() {
@@ -20,7 +20,7 @@ export default function SettingsPage() {
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
-        setSettings(data);
+        setSettings(data as Settings);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -125,20 +125,20 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Vault Info */}
+        {/* Storage Info */}
         <section className="mb-8">
           <h2 className="text-sm font-medium text-ink-muted uppercase tracking-wider mb-4">
-            Vault
+            Storage
           </h2>
           <div className="p-4 bg-surface border border-edge rounded-lg">
             <div>
-              <p className="text-base font-medium">Vault Path</p>
+              <p className="text-base font-medium">Database Binding</p>
               <p className="text-sm text-ink-muted mt-0.5">
-                Markdown files are stored here
+                Local and deployed data are stored in Cloudflare D1
               </p>
             </div>
             <p className="text-sm font-mono text-ink-muted mt-2 break-all">
-              {settings?.vaultPath || "./blinks-vault"}
+              {settings?.storagePath || "d1://blinks-db"}
             </p>
           </div>
         </section>

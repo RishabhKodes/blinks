@@ -64,8 +64,8 @@ export function FileOutputModal({ open, onClose, content }: FileOutputModalProps
         refreshGraph();
         onClose();
       } else {
-        const err = await res.json();
-        addToast(err.error || "Failed to file", "error");
+        const err = await res.json() as Record<string, unknown>;
+        addToast((err.error as string) || "Failed to file", "error");
       }
     } catch {
       addToast("Failed to file", "error");

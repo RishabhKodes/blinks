@@ -40,7 +40,7 @@ export function ArchivedPanel({
     try {
       const res = await fetch("/api/resources/archived");
       if (res.ok) {
-        setResources(await res.json());
+        setResources(await res.json() as ArchivedResource[]);
       }
     } catch {
       // ignore
