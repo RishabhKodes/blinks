@@ -33,12 +33,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+.dev.vars*
+!.dev.vars.example
 
 # vercel
 .vercel
 
 # blinks vault (generated from DB, rebuilt on use)
 blinks-vault/
+
+# OpenNext / Wrangler generated assets
+.open-next/
+.wrangler/
 
 # typescript
 *.tsbuildinfo

@@ -1,0 +1,10 @@
+# Optional overrides for `wrangler dev` / `npm run preview`.
+# If omitted, Wrangler uses values from `.env`.
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-5.5
+
+# Alternative provider
+# LLM_PROVIDER=claude
+# ANTHROPIC_API_KEY=your-anthropic-api-key-here
+# CLAUDE_MODEL=claude-sonnet-4-20250514
