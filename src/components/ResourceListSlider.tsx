@@ -28,9 +28,9 @@ export function ResourceListSlider() {
   }, [graphData.nodes]);
 
   return (
-    <div className="fixed left-6 md:left-9 top-[76px] md:top-[92px] bottom-6 md:bottom-9 z-30 pointer-events-none">
+    <div className="fixed left-3 md:left-9 top-[76px] md:top-[92px] bottom-6 md:bottom-9 z-30 pointer-events-none">
       <div
-        className={`absolute left-3 top-0 bottom-0 w-[300px] md:w-[320px] transition-transform duration-250 ease-out ${
+        className={`absolute left-2 md:left-3 top-0 bottom-0 w-[300px] md:w-[320px] transition-transform duration-250 ease-out ${
           open ? "translate-x-0" : "-translate-x-[120%]"
         }`}
       >
@@ -94,7 +94,7 @@ export function ResourceListSlider() {
 
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className={`pointer-events-auto absolute left-3 top-3 h-8 px-3 rounded-md border border-edge-subtle bg-surface/90 hover:bg-surface-hover text-ink-muted hover:text-ink-secondary text-xs font-medium whitespace-nowrap transition-all duration-250 ${
+        className={`pointer-events-auto absolute left-2 md:left-3 top-3 h-8 px-3 rounded-md border border-edge-subtle bg-surface/90 hover:bg-surface-hover text-ink-muted hover:text-ink-secondary text-xs font-medium whitespace-nowrap transition-all duration-250 ${
           open ? "translate-x-[308px] md:translate-x-[328px]" : "translate-x-0"
         }`}
         aria-label={open ? "Collapse resources list" : "Expand resources list"}
