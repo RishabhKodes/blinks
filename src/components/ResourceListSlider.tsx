@@ -14,7 +14,7 @@ function formatDate(dateValue: string) {
 
 export function ResourceListSlider() {
   const { graphData, selectedResource, selectResource, clearSelection } = useApp();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const resources = useMemo(() => {
     return [...graphData.nodes].sort((a, b) => {
