@@ -28,7 +28,7 @@ export function ResourceListSlider() {
   }, [graphData.nodes]);
 
   return (
-    <div className="fixed left-3 md:left-9 top-[44px] md:top-[92px] bottom-6 md:bottom-9 z-30 pointer-events-none">
+    <div className="fixed left-3 md:left-9 top-[64px] md:top-[92px] bottom-6 md:bottom-9 z-30 pointer-events-none">
       <div
         className={`absolute left-2 md:left-3 top-0 bottom-0 w-[300px] md:w-[320px] transition-transform duration-250 ease-out ${
           open ? "translate-x-0" : "-translate-x-[120%]"
