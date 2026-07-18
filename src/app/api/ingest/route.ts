@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import {
   slugify,
@@ -9,16 +9,57 @@ import {
   ensureVaultStructure,
 } from "@/lib/vault";
 import { fetchContent } from "@/lib/content/fetcher";
-import { classifyResource } from "@/lib/llm/classify";
-import type { GraphContext } from "@/lib/llm/classify";
+import {
+  classifyResource,
+  findRelatedResources,
+  type ExistingResource,
+  type GraphContext,
+  type ResourceConnection,
+} from "@/lib/llm/classify";
+import {
+  isPlaceholderTopic,
+} from "@/lib/graph/connections";
 
 async function getGraphContext(): Promise<GraphContext> {
   const db = await getDb();
   const allTopics = await db.select().from(schema.topics);
 
   return {
-    existingTopics: allTopics.map((t) => t.name),
+    existingTopics: allTopics
+      .map((t) => t.name)
+      .filter((topic) => !isPlaceholderTopic(topic)),
   };
+}
+
+async function getExistingResourcesForConnections(): Promise<ExistingResource[]> {
+  const db = await getDb();
+  const [allResources, allResourceTopics, allTopics] = await Promise.all([
+    db.select().from(schema.resources).where(isNull(schema.resources.archivedAt)),
+    db.select().from(schema.resourceTopics),
+    db.select().from(schema.topics),
+  ]);
+
+  const topicNameById = new Map(
+    allTopics
+      .filter((topic) => !isPlaceholderTopic(topic.name))
+      .map((topic) => [topic.id, topic.name])
+  );
+  const topicsByResource = new Map<string, string[]>();
+
+  for (const resourceTopic of allResourceTopics) {
+    const topicName = topicNameById.get(resourceTopic.topicId);
+    if (!topicName) continue;
+    const topics = topicsByResource.get(resourceTopic.resourceId) ?? [];
+    topics.push(topicName);
+    topicsByResource.set(resourceTopic.resourceId, topics);
+  }
+
+  return allResources.map((resource) => ({
+    id: resource.id,
+    title: resource.title,
+    summary: resource.summary,
+    topics: topicsByResource.get(resource.id) ?? [],
+  }));
 }
 
 export async function POST(request: Request) {
@@ -39,6 +80,20 @@ export async function POST(request: Request) {
     new URL(url);
   } catch {
     return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
+  }
+
+  const provider = (process.env.LLM_PROVIDER || "openai").toLowerCase();
+  const hasKey =
+    provider === "openai"
+      ? !!process.env.OPENAI_API_KEY
+      : !!process.env.ANTHROPIC_API_KEY;
+  if (!hasKey) {
+    return NextResponse.json(
+      {
+        error: `No API key configured. Set ${provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} in your .env file and restart the server.`,
+      },
+      { status: 503 }
+    );
   }
 
   const db = await getDb();
@@ -74,6 +129,21 @@ export async function POST(request: Request) {
 
   const isUrlTitle = content.title === content.url || content.title.startsWith("http");
   const title = (isUrlTitle && classification.title) ? classification.title : content.title;
+  const existingResources = await getExistingResourcesForConnections();
+  let relatedResources: ResourceConnection[] = [];
+  try {
+    relatedResources = await findRelatedResources(
+      {
+        id: "new-resource",
+        title,
+        summary: classification.summary,
+        topics: classification.topics,
+      },
+      existingResources
+    );
+  } catch (error) {
+    console.error("Resource connection analysis failed:", error);
+  }
 
   const slug = resourceSlug(title);
   ensureVaultStructure();
@@ -141,6 +211,19 @@ export async function POST(request: Request) {
     }
   }
 
+  for (const related of relatedResources) {
+    await db.insert(schema.resourceLinks)
+      .values({
+        sourceResourceId: id,
+        targetResourceId: related.resourceId,
+        relationship: related.relationship,
+        reason: related.reason,
+        confidence: Math.round(related.confidence * 100),
+        origin: "semantic-v2",
+        createdAt: now,
+      });
+  }
+
   const primaryTopicId = slugify(classification.topics[0] || "uncategorized");
   writeResourceFile(
     primaryTopicId,
@@ -167,6 +250,7 @@ export async function POST(request: Request) {
     {
       resource: { id, url: content.url, title, type: content.type, topics: classification.topics },
       classification,
+      relatedResources,
     },
     { status: 201 }
   );

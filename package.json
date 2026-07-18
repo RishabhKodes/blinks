@@ -1,7 +1,6 @@
 {
   "name": "blinks",
   "version": "0.1.0",
-  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
@@ -11,7 +10,8 @@
     "db:init:local": "wrangler d1 execute blinks-db --local --file d1-schema.sql",
     "db:migrate:local": "wrangler d1 migrations apply blinks-db --local",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test --experimental-strip-types --no-warnings src/lib/graph/connections.test.ts"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.19.6",

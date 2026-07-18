@@ -12,6 +12,45 @@ import { ResourceListSlider } from "@/components/ResourceListSlider";
 import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
 
+function SetupBanner() {
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((raw) => {
+        const data = raw as { provider?: string; hasOpenaiKey?: boolean; hasAnthropicKey?: boolean };
+        const provider = data.provider || "openai";
+        const hasKey =
+          provider === "openai" ? data.hasOpenaiKey : data.hasAnthropicKey;
+        setNeedsSetup(!hasKey);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!needsSetup) return null;
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[90vw] max-w-lg">
+      <div className="rounded-xl border border-amber-500/30 bg-amber-950/80 backdrop-blur-md px-5 py-4 text-sm text-amber-200 shadow-lg">
+        <p className="font-medium text-amber-100 mb-1">API key not configured</p>
+        <p>
+          Blinks requires your own LLM API key to work. Copy{" "}
+          <code className="bg-amber-900/50 px-1 rounded">.env.example</code> to{" "}
+          <code className="bg-amber-900/50 px-1 rounded">.env</code> and add your
+          OpenAI or Anthropic key, then restart the dev server.
+        </p>
+        <Link
+          href="/settings"
+          className="inline-block mt-2 text-amber-100 underline underline-offset-2 hover:text-white transition-colors"
+        >
+          Check settings
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   const { graphData, theme, toggleTheme, chatOpen, setChatOpen } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,6 +92,7 @@ function AppContent() {
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ArchivedPanel open={archiveOpen} onClose={() => setArchiveOpen(false)} />
       <ToastContainer />
+      <SetupBanner />
 
       {/* Top toolbar */}
       <div className="fixed top-0 left-0 right-0 z-20 pointer-events-none">

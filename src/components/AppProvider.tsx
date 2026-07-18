@@ -27,6 +27,11 @@ export interface GraphNode {
 export interface GraphLink {
   source: string;
   target: string;
+  relationship: string;
+  reason: string;
+  confidence: number;
+  origin: string;
+  directed: boolean;
 }
 
 export interface GraphData {
@@ -45,6 +50,13 @@ export interface SelectedResource {
   summary: string;
   savedAt: string;
   topics: string[];
+  connections: {
+    resourceId: string;
+    name: string;
+    relationship: string;
+    reason: string;
+    confidence: number;
+  }[];
 }
 
 export type ToastType = "success" | "error";
@@ -123,6 +135,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectResource = useCallback((resourceId: string) => {
     const node = graphData.nodes.find((n) => n.id === resourceId);
     if (node) {
+      const connections = graphData.links.flatMap((link) => {
+        const otherId = link.source === resourceId
+          ? link.target
+          : link.target === resourceId
+            ? link.source
+            : null;
+        if (!otherId) return [];
+        const other = graphData.nodes.find((candidate) => candidate.id === otherId);
+        if (!other) return [];
+        return [{
+          resourceId: other.id,
+          name: other.name,
+          relationship: link.relationship,
+          reason: link.reason,
+          confidence: link.confidence,
+        }];
+      });
+
       setSelectedResource({
         id: node.id,
         name: node.name,
@@ -134,6 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         summary: node.summary,
         savedAt: node.savedAt,
         topics: node.topics,
+        connections,
       });
     }
   }, [graphData]);

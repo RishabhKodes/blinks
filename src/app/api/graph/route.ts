@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDb, schema } from "@/lib/db";
 import { eq, isNull } from "drizzle-orm";
+import {
+  canonicalResourcePair,
+  isPlaceholderTopic,
+} from "@/lib/graph/connections";
 
 export async function GET() {
   const db = await getDb();
@@ -11,10 +15,15 @@ export async function GET() {
     .where(isNull(schema.resources.archivedAt));
   const allResourceTopics = await db.select().from(schema.resourceTopics);
   const allTopics = await db.select().from(schema.topics);
+  const allResourceLinks = await db.select().from(schema.resourceLinks);
   const allPositions = await db.select().from(schema.graphPositions);
 
   const posMap = new Map(allPositions.map((p) => [p.nodeId, { x: p.x, y: p.y }]));
-  const topicNameMap = new Map(allTopics.map((t) => [t.id, t.name]));
+  const topicNameMap = new Map(
+    allTopics
+      .filter((topic) => !isPlaceholderTopic(topic.name))
+      .map((topic) => [topic.id, topic.name])
+  );
 
   const topicsByResource = new Map<string, string[]>();
   for (const rt of allResourceTopics) {
@@ -25,34 +34,47 @@ export async function GET() {
   }
 
   const resourceIdSet = new Set(allResources.map((r) => r.id));
-  const linkSet = new Set<string>();
-  const links: { source: string; target: string }[] = [];
+  const linksByPair = new Map<string, {
+    source: string;
+    target: string;
+    relationship: string;
+    reason: string;
+    confidence: number;
+    origin: string;
+    directed: boolean;
+  }>();
 
-  if (allResources.length > 1) {
-    const topicToResources = new Map<string, string[]>();
-    for (const rt of allResourceTopics) {
-      if (!resourceIdSet.has(rt.resourceId)) continue;
-      const arr = topicToResources.get(rt.topicId) || [];
-      arr.push(rt.resourceId);
-      topicToResources.set(rt.topicId, arr);
+  for (const link of allResourceLinks) {
+    if (
+      link.sourceResourceId === link.targetResourceId ||
+      !resourceIdSet.has(link.sourceResourceId) ||
+      !resourceIdSet.has(link.targetResourceId)
+    ) {
+      continue;
     }
-    const pairWeight = new Map<string, number>();
-    for (const ids of topicToResources.values()) {
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          const key = [ids[i], ids[j]].sort().join("->");
-          pairWeight.set(key, (pairWeight.get(key) || 0) + 1);
-        }
-      }
-    }
-    for (const [key, weight] of pairWeight) {
-      if (weight >= 2 && !linkSet.has(key)) {
-        linkSet.add(key);
-        const [a, b] = key.split("->");
-        links.push({ source: a!, target: b! });
-      }
+
+    const [pairSource, pairTarget] = canonicalResourcePair(
+      link.sourceResourceId,
+      link.targetResourceId
+    );
+    const key = `${pairSource}->${pairTarget}`;
+    const candidate = {
+      source: link.sourceResourceId,
+      target: link.targetResourceId,
+      relationship: link.relationship,
+      reason: link.reason,
+      confidence: Math.max(0, Math.min(1, link.confidence / 100)),
+      origin: link.origin,
+      directed: ["builds_on", "applies", "source_reference"].includes(
+        link.relationship
+      ),
+    };
+    const existing = linksByPair.get(key);
+    if (!existing || candidate.confidence > existing.confidence) {
+      linksByPair.set(key, candidate);
     }
   }
+  const links = Array.from(linksByPair.values());
 
   const nodes = allResources.map((r) => ({
     id: r.id,

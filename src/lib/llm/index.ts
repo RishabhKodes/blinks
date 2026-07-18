@@ -1,4 +1,4 @@
-type LLMProvider = "claude" | "openai";
+type LLMProvider = "claude" | "openai" | "ollama";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -7,10 +7,14 @@ export interface ChatMessage {
 
 function getProvider(): LLMProvider {
   const provider = process.env.LLM_PROVIDER || "openai";
-  if (provider !== "claude" && provider !== "openai") {
-    throw new Error(`Unknown LLM_PROVIDER: ${provider}. Must be "claude" or "openai".`);
+  if (provider !== "claude" && provider !== "openai" && provider !== "ollama") {
+    throw new Error(`Unknown LLM_PROVIDER: ${provider}. Must be "claude", "openai", or "ollama".`);
   }
   return provider;
+}
+
+function getOllamaBaseUrl(): string {
+  return (process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/+$/, "");
 }
 
 async function claudeChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
@@ -49,34 +53,47 @@ async function claudeChat(systemPrompt: string, userPrompt: string, modelOverrid
   return textBlock?.text || "";
 }
 
-async function openaiChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
+interface OpenAICompatibleOptions {
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+  useJsonFormat: boolean;
+  label: string;
+}
+
+async function openaiCompatibleChat(
+  systemPrompt: string,
+  userPrompt: string,
+  opts: OpenAICompatibleOptions
+): Promise<string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (opts.apiKey) {
+    headers["Authorization"] = `Bearer ${opts.apiKey}`;
   }
 
-  const model = modelOverride || process.env.OPENAI_MODEL || "gpt-5.5";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: Record<string, any> = {
+    model: opts.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    max_completion_tokens: 1024,
+  };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  if (opts.useJsonFormat) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch(`${opts.baseUrl}/v1/chat/completions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      max_completion_tokens: 1024,
-      response_format: { type: "json_object" },
-    }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+    throw new Error(`${opts.label} API error (${response.status}): ${errText}`);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,6 +132,29 @@ async function openaiChat(systemPrompt: string, userPrompt: string, modelOverrid
   return "";
 }
 
+async function openaiChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
+  }
+  return openaiCompatibleChat(systemPrompt, userPrompt, {
+    baseUrl: "https://api.openai.com",
+    apiKey,
+    model: modelOverride || process.env.OPENAI_MODEL || "gpt-5.5",
+    useJsonFormat: true,
+    label: "OpenAI",
+  });
+}
+
+async function ollamaChat(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
+  return openaiCompatibleChat(systemPrompt, userPrompt, {
+    baseUrl: getOllamaBaseUrl(),
+    model: modelOverride || process.env.OLLAMA_MODEL || "llama3.2",
+    useJsonFormat: false,
+    label: "Ollama",
+  });
+}
+
 export async function chatCompletion(
   systemPrompt: string,
   userPrompt: string,
@@ -127,6 +167,8 @@ export async function chatCompletion(
       return claudeChat(systemPrompt, userPrompt, modelOverride);
     case "openai":
       return openaiChat(systemPrompt, userPrompt, modelOverride);
+    case "ollama":
+      return ollamaChat(systemPrompt, userPrompt, modelOverride);
   }
 }
 
@@ -166,25 +208,22 @@ async function claudeStreamRaw(
   return response;
 }
 
-async function openaiStreamRaw(
+async function openaiCompatibleStreamRaw(
   systemPrompt: string,
   messages: ChatMessage[],
-  maxTokens: number
+  maxTokens: number,
+  opts: { baseUrl: string; apiKey?: string; model: string; label: string }
 ): Promise<Response> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (opts.apiKey) {
+    headers["Authorization"] = `Bearer ${opts.apiKey}`;
   }
-  const model = process.env.OPENAI_MODEL || "gpt-5.5";
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${opts.baseUrl}/v1/chat/completions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
-      model,
+      model: opts.model,
       stream: true,
       messages: [
         { role: "system", content: systemPrompt },
@@ -197,9 +236,38 @@ async function openaiStreamRaw(
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+    throw new Error(`${opts.label} API error (${response.status}): ${errText}`);
   }
   return response;
+}
+
+async function openaiStreamRaw(
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number
+): Promise<Response> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.");
+  }
+  return openaiCompatibleStreamRaw(systemPrompt, messages, maxTokens, {
+    baseUrl: "https://api.openai.com",
+    apiKey,
+    model: process.env.OPENAI_MODEL || "gpt-5.5",
+    label: "OpenAI",
+  });
+}
+
+async function ollamaStreamRaw(
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number
+): Promise<Response> {
+  return openaiCompatibleStreamRaw(systemPrompt, messages, maxTokens, {
+    baseUrl: getOllamaBaseUrl(),
+    model: process.env.OLLAMA_MODEL || "llama3.2",
+    label: "Ollama",
+  });
 }
 
 function parseClaudeSSE(raw: Response): ReadableStream<Uint8Array> {
@@ -295,6 +363,10 @@ export async function chatCompletionStream(
     }
     case "openai": {
       const raw = await openaiStreamRaw(systemPrompt, messages, maxTokens);
+      return parseOpenAISSE(raw);
+    }
+    case "ollama": {
+      const raw = await ollamaStreamRaw(systemPrompt, messages, maxTokens);
       return parseOpenAISSE(raw);
     }
   }

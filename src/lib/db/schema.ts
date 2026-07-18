@@ -46,6 +46,11 @@ export const resourceLinks = sqliteTable("resource_links", {
   targetResourceId: text("target_resource_id")
     .notNull()
     .references(() => resources.id, { onDelete: "cascade" }),
+  relationship: text("relationship").notNull().default("related"),
+  reason: text("reason").notNull().default(""),
+  confidence: integer("confidence").notNull().default(100),
+  origin: text("origin").notNull().default("legacy"),
+  createdAt: text("created_at").notNull().default(""),
 });
 
 export const graphPositions = sqliteTable("graph_positions", {

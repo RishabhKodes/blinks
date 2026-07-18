@@ -40,6 +40,10 @@ interface CanvasNode {
 interface CanvasLink {
   source: string | CanvasNode;
   target: string | CanvasNode;
+  relationship: string;
+  reason: string;
+  confidence: number;
+  directed: boolean;
 }
 
 type ForceGraph2DComponent = ComponentType<
@@ -50,6 +54,19 @@ type ForceGraph2DComponent = ComponentType<
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#039;",
+    };
+    return entities[character] ?? character;
+  });
 }
 
 function radiusForLabel(label: string) {
@@ -280,6 +297,10 @@ function GraphCanvas() {
     const links: CanvasLink[] = graphData.links.map((link) => ({
       source: link.source,
       target: link.target,
+      relationship: link.relationship,
+      reason: link.reason,
+      confidence: link.confidence,
+      directed: link.directed,
     }));
 
     return { nodes, links };
@@ -584,11 +605,13 @@ function GraphCanvas() {
 
   const linkWidth = useCallback(
     (link: LinkObject) => {
-      if (!selectedNodeId) return 1;
+      const confidence = clamp((link as CanvasLink).confidence ?? 1, 0, 1);
+      const baseWidth = 0.7 + confidence * 0.8;
+      if (!selectedNodeId) return baseWidth;
       const source = (typeof link.source === "object" ? link.source : null) as CanvasNode | null;
       const target = (typeof link.target === "object" ? link.target : null) as CanvasNode | null;
       const connected = source?.id === selectedNodeId || target?.id === selectedNodeId;
-      return connected ? 1.8 : 1;
+      return connected ? baseWidth + 0.8 : baseWidth;
     },
     [selectedNodeId]
   );
@@ -613,6 +636,17 @@ function GraphCanvas() {
             }}
             nodeCanvasObject={nodeCanvasObject}
             nodePointerAreaPaint={nodePointerAreaPaint}
+            linkLabel={(link: LinkObject) => {
+              const data = link as CanvasLink;
+              const relationship = escapeHtml(data.relationship.replace(/_/g, " "));
+              return data.reason
+                ? `${relationship}: ${escapeHtml(data.reason)}`
+                : relationship;
+            }}
+            linkDirectionalArrowLength={(link: LinkObject) =>
+              (link as CanvasLink).directed ? 4 : 0
+            }
+            linkDirectionalArrowRelPos={0.92}
             linkColor={linkColor}
             linkWidth={linkWidth}
             minZoom={0.05}

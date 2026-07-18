@@ -86,6 +86,20 @@ export async function POST(request: Request) {
     });
   }
 
+  const provider = (process.env.LLM_PROVIDER || "openai").toLowerCase();
+  const hasKey =
+    provider === "openai"
+      ? !!process.env.OPENAI_API_KEY
+      : !!process.env.ANTHROPIC_API_KEY;
+  if (!hasKey) {
+    return new Response(
+      JSON.stringify({
+        error: `No API key configured. Set ${provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"} in your .env file and restart the server.`,
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const { topics, resources, topicLinks } = await loadKBContext();
 
   if (topics.length === 0 && resources.length === 0) {

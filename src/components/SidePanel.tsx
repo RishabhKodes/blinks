@@ -12,8 +12,18 @@ const TYPE_COLORS: Record<string, string> = {
   other: "bg-surface-hover text-ink-muted",
 };
 
+function relationshipLabel(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
 export function SidePanel() {
-  const { selectedResource, clearSelection, refreshGraph, addToast } = useApp();
+  const {
+    selectedResource,
+    selectResource,
+    clearSelection,
+    refreshGraph,
+    addToast,
+  } = useApp();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -144,6 +154,38 @@ export function SidePanel() {
                 >
                   {topic}
                 </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedResource.connections.length > 0 && (
+          <div className="px-6 py-4 border-b border-edge">
+            <h3 className="text-xs font-medium text-ink-muted uppercase tracking-wide mb-3">
+              Connections
+            </h3>
+            <div className="space-y-3">
+              {selectedResource.connections.map((connection) => (
+                <button
+                  key={connection.resourceId}
+                  type="button"
+                  className="w-full text-left rounded-lg border border-edge-subtle bg-surface px-3 py-2.5 hover:bg-surface-hover transition-colors"
+                  onClick={() => selectResource(connection.resourceId)}
+                >
+                  <span className="block text-sm font-medium text-ink-secondary">
+                    {connection.name}
+                  </span>
+                  <span className="mt-1 block text-xs capitalize text-ink-faint">
+                    {relationshipLabel(connection.relationship)}
+                    {" · "}
+                    {Math.round(connection.confidence * 100)}%
+                  </span>
+                  {connection.reason && (
+                    <span className="mt-1 block text-xs leading-relaxed text-ink-muted">
+                      {connection.reason}
+                    </span>
+                  )}
+                </button>
               ))}
             </div>
           </div>

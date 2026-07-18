@@ -9,6 +9,7 @@ import {
   writeTopicFile,
   ensureVaultStructure,
 } from "@/lib/vault";
+import { sanitizeTopicNames } from "@/lib/graph/connections";
 
 export async function GET() {
   const db = await getDb();
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     keyConcepts = [],
     whyItMatters = "",
     connections = [],
-    topics: topicNames = [],
+    topics: requestedTopicNames = [],
   } = body as {
     url?: string;
     title?: string;
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     connections?: string[];
     topics?: string[];
   };
+  const topicNames = sanitizeTopicNames(requestedTopicNames);
 
   if (!url || !title) {
     return NextResponse.json(

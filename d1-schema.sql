@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS `topic_links` (
 CREATE TABLE IF NOT EXISTS `resource_links` (
   `source_resource_id` text NOT NULL,
   `target_resource_id` text NOT NULL,
+  `relationship` text DEFAULT 'related' NOT NULL,
+  `reason` text DEFAULT '' NOT NULL,
+  `confidence` integer DEFAULT 100 NOT NULL,
+  `origin` text DEFAULT 'legacy' NOT NULL,
+  `created_at` text DEFAULT '' NOT NULL,
   FOREIGN KEY (`source_resource_id`) REFERENCES `resources`(`id`) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (`target_resource_id`) REFERENCES `resources`(`id`) ON UPDATE no action ON DELETE cascade
 );
