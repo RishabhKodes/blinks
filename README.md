@@ -2,6 +2,11 @@
 
 A local-first, AI-powered knowledge graph for your saved web resources. Paste a URL, and Blinks fetches the content, classifies it with an LLM, discovers connections between your resources, and renders everything as an interactive graph you can explore and chat with.
 
+<p align="center">
+  <img src="public/screenshot-graph.png" alt="Blinks knowledge graph overview" width="49%" />
+  <img src="public/screenshot-detail.png" alt="Resource detail panel with connections" width="49%" />
+</p>
+
 > **Bring Your Own Key** -- Blinks does not ship any API keys. You supply your
 > own OpenAI, Anthropic, or Ollama setup. All LLM calls run against your
 > credentials, on your account. Nothing is proxied through a third party.
