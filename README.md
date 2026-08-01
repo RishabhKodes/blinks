@@ -1,13 +1,13 @@
 # blinks
 
-A local-first, AI-powered knowledge graph for your saved web resources. Paste a URL, and Blinks fetches the content, classifies it with an LLM, discovers connections between your resources, and renders everything as an interactive graph you can explore and chat with.
+A local-first, AI-powered knowledge graph for your saved web resources. Paste a URL, and blinks fetches the content, classifies it with an LLM, discovers connections between your resources, and renders everything as an interactive graph you can explore and chat with.
 
 <p align="center">
-  <img src="public/screenshot-graph.png" alt="Blinks knowledge graph overview" width="49%" />
+  <img src="public/screenshot-graph.png" alt="blinks knowledge graph overview" width="49%" />
   <img src="public/screenshot-detail.png" alt="Resource detail panel with connections" width="49%" />
 </p>
 
-> **Bring Your Own Key** -- Blinks does not ship any API keys. You supply your
+> **Bring Your Own Key** -- blinks does not ship any API keys. You supply your
 > own OpenAI, Anthropic, or Ollama setup. All LLM calls run against your
 > credentials, on your account. Nothing is proxied through a third party.
 
@@ -15,13 +15,13 @@ A local-first, AI-powered knowledge graph for your saved web resources. Paste a 
 
 ## Features
 
-- **Save and classify** -- paste a URL and Blinks fetches the page content, generates a title, summary, key concepts, and topic tags via LLM
+- **Save and classify** -- paste a URL and blinks fetches the page content, generates a title, summary, key concepts, and topic tags via LLM
 - **Knowledge graph** -- resources and topics render as an interactive force-directed graph with drag, zoom, and click-to-inspect
 - **Semantic connections** -- a second LLM pass finds typed relationships between resources (same subject, builds on, contrasts, applies, source reference, duplicate)
 - **Chat** -- ask questions about your saved resources; the LLM answers grounded in your knowledge base, with the option to file answers back as notes
 - **Search** -- full-text search across all topics, resources, titles, summaries, and authors
 - **Dark and light mode** -- toggle between themes; preference is saved in your browser
-- **PWA** -- installable on mobile and desktop with share-target support (share URLs directly from other apps into Blinks)
+- **PWA** -- installable on mobile and desktop with share-target support (share URLs directly from other apps into blinks)
 - **Authentication** -- optional login wall via environment variables to protect access on shared networks
 - **Three LLM providers** -- OpenAI (cloud), Anthropic/Claude (cloud), or Ollama (local, fully offline)
 - **Supported sources** -- auto-detects Twitter/X, YouTube, GitHub, ArXiv, Medium, Reddit, Substack, Spotify, Hacker News, Stack Overflow, Wikipedia, and any generic webpage
@@ -118,7 +118,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## LLM Providers
 
-Blinks supports three providers. Set `LLM_PROVIDER` in your `.env` to switch between them. You must restart the dev server after changing this value.
+blinks supports three providers. Set `LLM_PROVIDER` in your `.env` to switch between them. You must restart the dev server after changing this value.
 
 ### OpenAI
 
@@ -158,7 +158,7 @@ Claude also supports per-task model overrides:
 
 ### Ollama (Local Models)
 
-Ollama lets you run LLMs locally with no cloud API key and no data leaving your machine. Blinks talks to Ollama via its OpenAI-compatible API.
+Ollama lets you run LLMs locally with no cloud API key and no data leaving your machine. blinks talks to Ollama via its OpenAI-compatible API.
 
 **Setup:**
 
@@ -181,13 +181,13 @@ Ollama lets you run LLMs locally with no cloud API key and no data leaving your 
    # OLLAMA_BASE_URL=http://localhost:11434   # default, change only if needed
    ```
 
-5. Start Blinks: `npm run dev`
+5. Start blinks: `npm run dev`
 
 6. Go to `/settings` and confirm the Ollama status badge shows **Connected**.
 
 **Recommended models:**
 
-Blinks requires models that follow JSON instructions reliably. Good options:
+blinks requires models that follow JSON instructions reliably. Good options:
 
 | Model | Size | Notes |
 |-------|------|-------|
@@ -198,13 +198,13 @@ Blinks requires models that follow JSON instructions reliably. Good options:
 
 Ollama uses a single model for all tasks (classification, connections, chat). Set it via `OLLAMA_MODEL`.
 
-Blinks has built-in JSON repair for malformed LLM output, so even smaller models work reasonably well. If classification consistently fails, try a larger model.
+blinks has built-in JSON repair for malformed LLM output, so even smaller models work reasonably well. If classification consistently fails, try a larger model.
 
 ---
 
 ## Authentication
 
-Blinks includes an optional login wall. When enabled, all pages (except the login page itself) require a username and password.
+blinks includes an optional login wall. When enabled, all pages (except the login page itself) require a username and password.
 
 **To enable:**
 
@@ -223,7 +223,7 @@ AUTH_PASSWORD=your-password-here
 - The cookie is HTTP-only and uses the `secure` flag in production.
 - If either `AUTH_USERNAME` or `AUTH_PASSWORD` is missing, auth is completely bypassed and the app is open to anyone who can reach it.
 
-This is useful when you access Blinks over your local network or expose it via a tunnel.
+This is useful when you access blinks over your local network or expose it via a tunnel.
 
 ---
 
@@ -242,7 +242,7 @@ This is useful when you access Blinks over your local network or expose it via a
 
 ## Dark and Light Mode
 
-Blinks supports both dark and light themes. Toggle using the theme button in the top toolbar. Your preference is saved in `localStorage` and persists across sessions.
+blinks supports both dark and light themes. Toggle using the theme button in the top toolbar. Your preference is saved in `localStorage` and persists across sessions.
 
 The default theme is **dark**. An inline script prevents flash-of-unstyled-content on page load by applying the saved theme class before first paint.
 
@@ -250,7 +250,7 @@ The default theme is **dark**. An inline script prevents flash-of-unstyled-conte
 
 ## Mobile Access
 
-The Blinks UI is fully responsive -- the graph, panels, modals, and chat all adapt to small screens.
+The blinks UI is fully responsive -- the graph, panels, modals, and chat all adapt to small screens.
 
 ### Browser access (works immediately)
 
@@ -276,7 +276,7 @@ The full app works in the mobile browser -- browse the graph, add URLs, chat, se
 
 ### Install as app (requires HTTPS)
 
-For the full PWA experience (standalone app window, "Blinks" in the system share sheet), you need HTTPS. Over plain HTTP the app works fine in the browser, but the service worker and install prompt are unavailable.
+For the full PWA experience (standalone app window, "blinks" in the system share sheet), you need HTTPS. Over plain HTTP the app works fine in the browser, but the service worker and install prompt are unavailable.
 
 **Quick HTTPS with Cloudflare Tunnel** (free, no account for quick tunnels):
 
@@ -292,7 +292,7 @@ This gives you a temporary `https://....trycloudflare.com` URL.
 - **iOS**: Open the HTTPS URL in Safari, tap Share, then **Add to Home Screen**
 - **Android**: Open in Chrome, tap the menu, then **Install App** or **Add to Home Screen**
 
-Once installed, Blinks opens as a standalone fullscreen app. The system share sheet includes "Blinks" as a target -- share any URL from your browser or other apps and it auto-saves to your knowledge graph.
+Once installed, blinks opens as a standalone fullscreen app. The system share sheet includes "blinks" as a target -- share any URL from your browser or other apps and it auto-saves to your knowledge graph.
 
 ---
 
@@ -302,10 +302,10 @@ Once installed, Blinks opens as a standalone fullscreen app. The system share sh
 
 When you add a URL:
 
-1. **Content extraction** -- Blinks fetches the page, runs it through `defuddle` for reader-mode text extraction, and pulls OpenGraph metadata (title, description, image) via `open-graph-scraper`. Special handling for Twitter/X (via FxTwitter API, no auth needed), YouTube, GitHub, and other platforms.
+1. **Content extraction** -- blinks fetches the page, runs it through `defuddle` for reader-mode text extraction, and pulls OpenGraph metadata (title, description, image) via `open-graph-scraper`. Special handling for Twitter/X (via FxTwitter API, no auth needed), YouTube, GitHub, and other platforms.
 2. **LLM classification** -- the extracted text (truncated to 4000 characters) is sent to your LLM provider, which returns: a cleaned title, summary, key concepts, "why it matters" analysis, resource type, and topic tags.
 3. **Topic creation** -- new topics are created as needed, and the resource is linked to its topics. Related topics are connected via `topicLinks`.
-4. **Connection discovery** -- Blinks runs a second LLM pass using a TF-IDF pre-filter (ranks all existing resources by text similarity, takes the top 18 candidates) and then asks the LLM to judge which are genuinely related. Connections require a minimum 0.72 confidence score and are typed (same_subject, builds_on, contrasts, applies, source_reference, duplicate). Each resource gets at most 4 connections.
+4. **Connection discovery** -- blinks runs a second LLM pass using a TF-IDF pre-filter (ranks all existing resources by text similarity, takes the top 18 candidates) and then asks the LLM to judge which are genuinely related. Connections require a minimum 0.72 confidence score and are typed (same_subject, builds_on, contrasts, applies, source_reference, duplicate). Each resource gets at most 4 connections.
 
 ### Graph
 
@@ -327,7 +327,7 @@ If you change your LLM provider or want to re-evaluate all connections with a di
 
 ### Wiki compilation (API only)
 
-Blinks can synthesize all resources under a topic into a coherent article. This is available via the API only (no UI):
+blinks can synthesize all resources under a topic into a coherent article. This is available via the API only (no UI):
 
 ```bash
 # Compile a single topic
@@ -394,7 +394,7 @@ All variables are set in `.env` (or `.env.local`). Restart the dev server after 
 
 ## Database
 
-Blinks uses Cloudflare D1 (SQLite) locally via Wrangler. The database files are stored under `.wrangler/state/` (gitignored).
+blinks uses Cloudflare D1 (SQLite) locally via Wrangler. The database files are stored under `.wrangler/state/` (gitignored).
 
 ### Initialize or reset
 
