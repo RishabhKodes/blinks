@@ -1,4 +1,4 @@
-# Blinks
+# blinks
 
 A local-first, AI-powered knowledge graph for your saved web resources. Paste a URL, and Blinks fetches the content, classifies it with an LLM, discovers connections between your resources, and renders everything as an interactive graph you can explore and chat with.
 
