@@ -28,6 +28,12 @@ A local-first, AI-powered knowledge graph for your saved web resources. Paste a 
 
 ---
 
+## How to use the app
+
+To add a resource, click **+ Add** (or press `Ctrl+N`), paste the resource's URL, and submit it. Blinks will fetch and process the resource, then add it to your knowledge graph.
+
+---
+
 ## Stack
 
 | Layer | Technology |
