@@ -246,14 +246,6 @@ This is useful when you access blinks over your local network or expose it via a
 
 ---
 
-## Dark and Light Mode
-
-blinks supports both dark and light themes. Toggle using the theme button in the top toolbar. Your preference is saved in `localStorage` and persists across sessions.
-
-The default theme is **dark**. An inline script prevents flash-of-unstyled-content on page load by applying the saved theme class before first paint.
-
----
-
 ## Mobile Access
 
 The blinks UI is fully responsive -- the graph, panels, modals, and chat all adapt to small screens.
