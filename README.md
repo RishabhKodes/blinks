@@ -555,44 +555,6 @@ blinks/
 
 ---
 
-## Troubleshooting
-
-**"OPENAI_API_KEY is required" or "ANTHROPIC_API_KEY is required"**
-Check your `.env` file, make sure the key is set for your chosen `LLM_PROVIDER`, then restart `npm run dev`.
-
-**"no such table ..."**
-Run `npm run db:migrate:local` to apply migrations.
-
-**Ollama: classification fails or returns empty results**
-- Make sure `ollama serve` is running.
-- Verify the model is pulled: `ollama list` should show your model.
-- Try a larger model (`mistral` or `qwen2.5`) if JSON output is consistently malformed.
-- Check `OLLAMA_BASE_URL` if Ollama runs on a non-default port or host.
-- Check `/settings` -- the Ollama status badge should show **Connected**.
-
-**Ollama: "fetch failed" or connection refused**
-- Ollama defaults to `http://localhost:11434`. If you changed the port, set `OLLAMA_BASE_URL` in `.env`.
-- On Linux, check if Ollama is bound to `127.0.0.1` vs `0.0.0.0`.
-
-**Mobile: can't reach the app from phone**
-- Confirm your phone and computer are on the same WiFi network.
-- Check your firewall allows incoming connections on port 3000.
-- Use `http://<ip>:3000`, not `https`.
-
-**Mobile: "Install App" option not available**
-PWA install requires HTTPS. Use `cloudflared tunnel` or deploy to Cloudflare (see sections above).
-
-**Wrangler / D1 commands fail**
-Upgrade to Node 22+ (`node --version`).
-
-**Graph looks empty after adding resources**
-Check the browser console for errors. The most common cause is an LLM API key issue -- go to `/settings` to verify.
-
-**Chat returns "LLM request failed"**
-This is a generic error to avoid leaking API details. Check the server terminal for the actual error. Common causes: expired API key, rate limit, or network issue.
-
----
-
 ## Roadmap
 
 - [ ] Provider selection from the Settings UI (no restart required)
